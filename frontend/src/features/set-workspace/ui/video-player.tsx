@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { playerController } from '../model/player-controller'
 
@@ -5,11 +6,12 @@ type Props = {
   src: string
   onTime: (seconds: number) => void
   onDuration: (seconds: number) => void
+  overlay?: ComponentChildren
 }
 
 const RATES = [0.5, 1, 1.5, 2, 3]
 
-export function VideoPlayer({ src, onTime, onDuration }: Props) {
+export function VideoPlayer({ src, onTime, onDuration, overlay }: Props) {
   const ref = useRef<HTMLVideoElement>(null)
   const [rate, setRate] = useState(1)
 
@@ -20,6 +22,7 @@ export function VideoPlayer({ src, onTime, onDuration }: Props) {
 
   return (
     <div class="flex flex-col gap-1.5">
+      <div class="relative">
       <video
         ref={ref}
         src={src}
@@ -33,6 +36,8 @@ export function VideoPlayer({ src, onTime, onDuration }: Props) {
           e.currentTarget.playbackRate = rate
         }}
       />
+      {overlay}
+      </div>
       <div class="flex items-center gap-1 text-xs text-zinc-400">
         Скорость:
         {RATES.map((r) => (

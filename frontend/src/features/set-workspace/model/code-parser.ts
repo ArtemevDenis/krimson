@@ -6,6 +6,10 @@ export type CommandType =
   | { kind: 'winner'; side: SideType }
   | { kind: 'star' }
   | { kind: 'action'; number: number | null; skill: SkillType; evaluation: EvaluationType }
+  /** `31+`: number + evaluation, the skill comes from the active CV suggestion */
+  | { kind: 'quick'; number: number; evaluation: EvaluationType }
+  /** `x`: reject the active suggestion */
+  | { kind: 'reject' }
 
 export type ParseResultType = { ok: true; commands: CommandType[] } | { ok: false; error: string }
 
@@ -21,10 +25,12 @@ const RU_TO_LATIN: Record<string, string> = {
   'х': '[',
   'ъ': ']',
   '№': '#',
+  'ч': 'x',
   '.': '/',
 }
 
 const ACTION_RE = /^(\d{1,2})?([srabdef])([#+!\-/=])$/
+const QUICK_RE = /^(\d{1,2})([#+!\-/=])$/
 
 export function normalizeCode(text: string): string {
   return [...text.toLowerCase()].map((ch) => RU_TO_LATIN[ch] ?? ch).join('')
@@ -42,7 +48,11 @@ function parseToken(token: string): CommandType | null {
       return { kind: 'winner', side: 'them' }
     case '*':
       return { kind: 'star' }
+    case 'x':
+      return { kind: 'reject' }
   }
+  const quick = QUICK_RE.exec(token)
+  if (quick) return { kind: 'quick', number: Number(quick[1]), evaluation: quick[2] as EvaluationType }
   const m = ACTION_RE.exec(token)
   if (!m) return null
   return {

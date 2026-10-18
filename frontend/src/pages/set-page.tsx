@@ -1,7 +1,9 @@
 import { useUnit } from 'effector-react'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
+import { CourtCalibrator } from '@/features/court-calibration'
 import {
+  activeSuggestionIdStore,
   CodeCheatsheet,
   CodeInput,
   commandErrorStore,
@@ -15,6 +17,7 @@ import {
   isTextField,
   LineupEditor,
   loadWorkspaceFx,
+  nextSuggestionRequested,
   numberPicked,
   pendingSubsCleared,
   pendingSubsStore,
@@ -27,9 +30,12 @@ import {
   runCommandFx,
   Scoreboard,
   selectedRallyIdStore,
-  startRallyDetection,
+  startAnalysis,
   SubstitutionForm,
   substitutionQueued,
+  SuggestionBar,
+  SuggestionOverlay,
+  suggestionActivated,
   undoFx,
   undoRequested,
   updateRallyFx,
@@ -47,13 +53,22 @@ import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 
 export function SetPage({ setId }: { setId: number }) {
-  const [ws, selectedId, draft, error, pendingSubs] = useUnit([workspaceStore, selectedRallyIdStore, draftStore, commandErrorStore, pendingSubsStore])
+  const [ws, selectedId, draft, error, pendingSubs, activeSuggestionId] = useUnit([
+    workspaceStore,
+    selectedRallyIdStore,
+    draftStore,
+    commandErrorStore,
+    pendingSubsStore,
+    activeSuggestionIdStore,
+  ])
   const [running, undoing, savingSet] = useUnit([runCommandFx.pending, undoFx.pending, updateSetFx.pending])
   const [teams, teamId] = useUnit([teamsStore, currentTeamIdStore])
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [panel, setPanel] = useState<'lineup' | 'video' | null>(null)
+  const [panel, setPanel] = useState<'lineup' | 'video' | 'court' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState<number | null>(null)
+  const [calibrated, setCalibrated] = useState(false)
 
   useEffect(() => {
     workspaceOpened(setId)
@@ -83,6 +98,7 @@ export function SetPage({ setId }: { setId: number }) {
   const playing = rallyAtTime(ws, time)
   const showLineup = !configured || panel === 'lineup'
   const showVideoImport = !ws.video || panel === 'video'
+  const activeSuggestion = ws.suggestions.find((sg) => sg.id === activeSuggestionId) ?? null
 
   const selectRally = (id: number | null) => {
     rallySelected(id)
@@ -90,17 +106,36 @@ export function SetPage({ setId }: { setId: number }) {
     if (rally?.start_time !== null && rally?.start_time !== undefined) playerController.seek(rally.start_time)
   }
 
-  const detect = async () => {
-    setNotice('Ищу розыгрыши…')
-    const job = await startRallyDetection(setId)
-    watchJob(job.id, (j) => {
-      if (j.status === 'done') {
-        setNotice(`Автопоиск: найдено ${String(j.result?.['detected'] ?? 0)}, добавлено ${String(j.result?.['added'] ?? 0)}. Детектор появится на этапе 2.`)
-        void loadWorkspaceFx(setId)
-      } else if (j.status === 'failed') {
-        setNotice(`Автопоиск не удался: ${j.error ?? ''}`)
-      }
-    })
+  const analyze = async () => {
+    if (!calibrated) {
+      setPanel('court')
+      setNotice('Сначала разметьте площадку: анализ определяет, на чьей стороне касание.')
+      return
+    }
+    setNotice(null)
+    setAnalysis(0)
+    try {
+      const job = await startAnalysis(setId)
+      watchJob(job.id, (j) => {
+        if (j.status === 'running' || j.status === 'queued') {
+          setAnalysis(j.progress)
+          return
+        }
+        setAnalysis(null)
+        if (j.status === 'done') {
+          const r = j.result ?? {}
+          setNotice(
+            `Анализ готов: розыгрышей найдено ${String(r['detected'] ?? 0)}, добавлено ${String(r['added'] ?? 0)}, подсказок действий ${String(r['suggestions'] ?? 0)}.`,
+          )
+          void loadWorkspaceFx(setId)
+        } else {
+          setNotice(`Анализ не удался: ${j.error ?? ''}`)
+        }
+      })
+    } catch (e) {
+      setAnalysis(null)
+      setNotice(e instanceof Error ? e.message : String(e))
+    }
   }
 
   return (
@@ -110,6 +145,19 @@ export function SetPage({ setId }: { setId: number }) {
           ← {teamName} — {ws.match.opponent}
         </Link>
         <h1 class="text-lg font-semibold">Партия {ws.set.number}</h1>
+        <Button
+          size="sm"
+          variant={ws.set.verified ? 'primary' : 'ghost'}
+          title="Отмечайте, когда размечены ВСЕ розыгрыши и ВСЕ касания нашей команды — тогда партия идёт в обучение анализатора"
+          onClick={() => {
+            const next = !ws.set.verified
+            if (!next || confirm('Все розыгрыши и все касания нашей команды размечены? Партия пойдёт в обучение анализатора.')) {
+              void updateSetFx({ verified: next })
+            }
+          }}
+        >
+          {ws.set.verified ? '✓ Проверена' : 'Отметить проверенной'}
+        </Button>
         <div class="ml-auto flex gap-2">
           {configured && (
             <Button size="sm" variant={panel === 'lineup' ? 'primary' : 'secondary'} onClick={() => setPanel(panel === 'lineup' ? null : 'lineup')}>
@@ -121,8 +169,18 @@ export function SetPage({ setId }: { setId: number }) {
               Видео
             </Button>
           )}
-          <Button size="sm" disabled={!ws.video} onClick={() => void detect()} title="Этап 2: автоматическая нарезка на розыгрыши">
-            Автопоиск розыгрышей
+          {ws.video && (
+            <Button size="sm" variant={panel === 'court' ? 'primary' : 'secondary'} onClick={() => setPanel(panel === 'court' ? null : 'court')}>
+              Площадка{calibrated ? ' ✓' : ''}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            disabled={!ws.video || analysis !== null}
+            onClick={() => void analyze()}
+            title="Поиск розыгрышей и подсказки действий по видео. Долго: на Mac около часа на партию"
+          >
+            {analysis !== null ? `Анализ… ${Math.round(analysis * 100)}%` : 'Авторазметка'}
           </Button>
         </div>
       </div>
@@ -132,6 +190,19 @@ export function SetPage({ setId }: { setId: number }) {
           <button type="button" onClick={() => setNotice(null)}>
             ×
           </button>
+        </div>
+      )}
+
+      {ws.video && (
+        <div class={panel === 'court' ? '' : 'hidden'}>
+          <Card title="Разметка площадки">
+            <CourtCalibrator
+              videoId={ws.video.id}
+              captureFrame={() => playerController.captureFrame()}
+              onSeek={(t) => playerController.seek(t)}
+              onChanged={(list) => setCalibrated(list.length > 0)}
+            />
+          </Card>
         </div>
       )}
 
@@ -173,6 +244,7 @@ export function SetPage({ setId }: { setId: number }) {
               src={`/api/videos/${ws.video.id}/stream`}
               onTime={setTime}
               onDuration={setDuration}
+              overlay={<SuggestionOverlay suggestion={activeSuggestion} />}
             />
             <RallyTimeline
               rallies={ws.rallies}
@@ -184,6 +256,13 @@ export function SetPage({ setId }: { setId: number }) {
             />
             {configured && (
               <>
+                <SuggestionBar
+                  pendingCount={ws.suggestions.length}
+                  active={activeSuggestion}
+                  onNext={nextSuggestionRequested}
+                  onReplay={() => suggestionActivated(activeSuggestion)}
+                  onClose={() => suggestionActivated(null)}
+                />
                 <CodeInput
                   value={draft}
                   pending={running || undoing}
@@ -192,6 +271,7 @@ export function SetPage({ setId }: { setId: number }) {
                   onChange={draftChanged}
                   onSubmit={commandSubmitted}
                   onUndo={undoRequested}
+                  onNext={nextSuggestionRequested}
                   onExitEdit={() => rallySelected(null)}
                   onDismissError={errorDismissed}
                 />
@@ -223,6 +303,9 @@ export function SetPage({ setId }: { setId: number }) {
               )}
               <RallyList
                 rallies={ws.rallies}
+                suggestions={ws.suggestions}
+                activeSuggestionId={activeSuggestionId}
+                onSuggestion={suggestionActivated}
                 players={players}
                 selectedId={selectedId}
                 playingId={playing?.id ?? null}

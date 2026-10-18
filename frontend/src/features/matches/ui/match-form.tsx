@@ -1,17 +1,21 @@
 import { useState } from 'preact/hooks'
+import type { VenueType } from '@/shared/api/schemas'
 import { today } from '@/shared/lib/format'
 import { Button } from '@/shared/ui/button'
 import { Field, Input } from '@/shared/ui/form'
+import { VenueSelect } from './venue-select'
 
 type Props = {
   pending: boolean
-  onSubmit: (draft: { opponent: string; date: string; venue: string | null }) => void
+  venues: VenueType[]
+  onCreateVenue: (name: string) => Promise<VenueType>
+  onSubmit: (draft: { opponent: string; date: string; venue_id: number | null }) => void
 }
 
-export function MatchForm({ pending, onSubmit }: Props) {
+export function MatchForm({ pending, venues, onCreateVenue, onSubmit }: Props) {
   const [opponent, setOpponent] = useState('')
   const [date, setDate] = useState(today())
-  const [venue, setVenue] = useState('')
+  const [venueId, setVenueId] = useState<number | null>(null)
 
   return (
     <form
@@ -19,9 +23,8 @@ export function MatchForm({ pending, onSubmit }: Props) {
       onSubmit={(e) => {
         e.preventDefault()
         if (!opponent.trim()) return
-        onSubmit({ opponent: opponent.trim(), date, venue: venue.trim() || null })
+        onSubmit({ opponent: opponent.trim(), date, venue_id: venueId })
         setOpponent('')
-        setVenue('')
       }}
     >
       <Field label="Соперник">
@@ -30,8 +33,8 @@ export function MatchForm({ pending, onSubmit }: Props) {
       <Field label="Дата">
         <Input type="date" value={date} onInput={(e) => setDate(e.currentTarget.value)} />
       </Field>
-      <Field label="Место (необязательно)">
-        <Input value={venue} onInput={(e) => setVenue(e.currentTarget.value)} />
+      <Field label="Зал (для моделей авторазметки)">
+        <VenueSelect venues={venues} value={venueId} onChange={setVenueId} onCreate={onCreateVenue} />
       </Field>
       <Button type="submit" variant="primary" disabled={pending || !opponent.trim()}>
         Создать матч

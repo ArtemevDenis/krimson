@@ -4,12 +4,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app import config
 from app.db import get_session
-from app.models import Video
+from app.cv.geometry import Court
+from app.models import CourtCalibration, Video
 from app.services import jobs, media
 from app.services.sets import get_or_404
 
@@ -20,6 +21,15 @@ VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".mkv", ".avi"}
 
 class VideoImport(BaseModel):
     path: str
+
+
+class CalibrationIn(BaseModel):
+    from_time: float = Field(default=0, ge=0)
+    points: list[list[float]] = Field(min_length=6, max_length=6)
+
+
+def _calibration_out(c: CourtCalibration) -> dict:
+    return {**c.model_dump(), "error_m": round(Court.from_points(c.from_time, c.points).reprojection_error(), 2)}
 
 
 def _register(session: Session, path: Path) -> Video:
@@ -88,3 +98,37 @@ def stream(video_id: int, session: Session = Depends(get_session)) -> FileRespon
     if not path.is_file():
         raise HTTPException(404, "Файл видео недоступен")
     return FileResponse(path, media_type="video/mp4")
+
+
+@router.get("/{video_id}/calibrations")
+def list_calibrations(video_id: int, session: Session = Depends(get_session)) -> list[dict]:
+    get_or_404(session, Video, video_id)
+    rows = session.exec(select(CourtCalibration).where(CourtCalibration.video_id == video_id).order_by(CourtCalibration.from_time))
+    return [_calibration_out(c) for c in rows]
+
+
+@router.post("/{video_id}/calibrations")
+def add_calibration(video_id: int, body: CalibrationIn, session: Session = Depends(get_session)) -> list[dict]:
+    """A calibration at the same moment replaces the old one (re-clicking the court)."""
+    get_or_404(session, Video, video_id)
+    if any(len(p) != 2 for p in body.points):
+        raise HTTPException(422, "Каждая точка — пара [x, y]")
+    try:
+        Court.from_points(body.from_time, body.points)
+    except (ValueError, ArithmeticError) as exc:
+        raise HTTPException(422, f"Не удалось построить площадку: {exc}") from exc
+    for old in session.exec(select(CourtCalibration).where(CourtCalibration.video_id == video_id)):
+        if abs(old.from_time - body.from_time) < 1.0:
+            session.delete(old)
+    session.add(CourtCalibration(video_id=video_id, from_time=body.from_time, points=body.points))
+    session.commit()
+    return list_calibrations(video_id, session)
+
+
+@router.delete("/calibrations/{calibration_id}")
+def delete_calibration(calibration_id: int, session: Session = Depends(get_session)) -> list[dict]:
+    cal = get_or_404(session, CourtCalibration, calibration_id)
+    video_id = cal.video_id
+    session.delete(cal)
+    session.commit()
+    return list_calibrations(video_id, session)

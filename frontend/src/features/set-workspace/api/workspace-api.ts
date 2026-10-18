@@ -9,6 +9,7 @@ import {
 } from '@/shared/api/schemas'
 
 export type SetPatchType = {
+  verified?: boolean
   video_id?: number | null
   lineup?: number[]
   libero_ids?: number[]
@@ -28,6 +29,7 @@ export type ActionDraftType = {
   skill: SkillType
   evaluation: EvaluationType
   video_time: number | null
+  suggestion_id?: number | null
 }
 
 export const fetchWorkspace = (setId: number) => request(`/api/sets/${setId}`, workspaceSchema)
@@ -51,5 +53,7 @@ export const patchAction = (actionId: number, patch: Partial<ActionDraftType>) =
 
 export const deleteAction = (actionId: number) => request(`/api/actions/${actionId}`, workspaceSchema, { method: 'DELETE' })
 
-export const startRallyDetection = (setId: number) =>
-  request(`/api/sets/${setId}/detect-rallies`, jobSchema, { method: 'POST', body: {} })
+export const startAnalysis = (setId: number) => request(`/api/sets/${setId}/analyze`, jobSchema, { method: 'POST', body: {} })
+
+export const patchSuggestion = (id: number, status: 'pending' | 'accepted' | 'rejected') =>
+  request(`/api/suggestions/${id}`, workspaceSchema, { method: 'PATCH', body: { status } })

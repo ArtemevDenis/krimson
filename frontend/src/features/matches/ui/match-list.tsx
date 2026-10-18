@@ -24,7 +24,7 @@ export function MatchList({ matches, teamName, onOpen, onDelete }: Props) {
               <span class="w-24 text-xs text-zinc-500 tabular">{formatDate(m.date)}</span>
               <span class="flex-1 text-sm">
                 {teamName} <span class="text-zinc-500">—</span> {m.opponent}
-                {m.venue && <span class="ml-2 text-xs text-zinc-500">{m.venue}</span>}
+                {m.venue_name && <span class="ml-2 text-xs text-zinc-500">{m.venue_name}</span>}
               </span>
               <span class="flex gap-1.5 text-xs text-zinc-400 tabular">
                 {m.sets.map((s) => (

@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from app.cv.base import CourtCalibration, ProgressFn, RallySegment
+from app.cv.base import AnalysisResult, CalibrationInput, ProgressFn
 
 
-class NoopRallyDetector:
-    """Placeholder until the stage-2 detector lands; keeps the job pipeline exercised end to end."""
+class NoopAnalyzer:
+    """Used in tests and when the CV extra isn't installed."""
 
     name = "noop"
 
-    def detect(self, video: Path, calibrations: list[CourtCalibration], progress: ProgressFn) -> list[RallySegment]:
+    def analyze(self, video: Path, calibrations: list[CalibrationInput], profile, progress: ProgressFn) -> AnalysisResult:
         progress(1.0)
-        return []
+        return AnalysisResult()

@@ -12,6 +12,16 @@ def _json_list() -> Column:
 class Team(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
+    # Stable across renames and devices: links the team to its player models in models/team/<slug>
+    slug: str | None = Field(default=None, index=True)
+
+
+class Venue(SQLModel, table=True):
+    """A hall. Each hall gets its own analyzer thresholds and ball detector (models/venue/<slug>)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    slug: str = Field(index=True, unique=True)
 
 
 class Player(SQLModel, table=True):
@@ -41,7 +51,8 @@ class Match(SQLModel, table=True):
     team_id: int = Field(foreign_key="team.id", ondelete="CASCADE", index=True)
     opponent: str
     date: dt.date
-    venue: str | None = None
+    venue: str | None = None  # legacy free text, superseded by venue_id
+    venue_id: int | None = Field(default=None, foreign_key="venue.id", ondelete="SET NULL")
     notes: str | None = None
 
 
@@ -56,6 +67,10 @@ class GameSet(SQLModel, table=True):
     lineup: list[int] = Field(default_factory=list, sa_column=_json_list())
     libero_ids: list[int] = Field(default_factory=list, sa_column=_json_list())
     we_serve_first: bool = True
+    # Fully checked by the user: every rally and every touch of our team is tagged, so it can serve as
+    # ground truth (anything untagged really didn't happen) for evaluating and training the analyzer
+    verified: bool = False
+    verified_at: datetime | None = None
 
 
 class Rally(SQLModel, table=True):
@@ -80,6 +95,10 @@ class Action(SQLModel, table=True):
     skill: str
     evaluation: str
     video_time: float | None = None
+    # Training data: which CV suggestion this came from (skill may differ = a correction) and where the
+    # player was on the frame; video_time is the exact touch moment when it came from a suggestion
+    suggestion_id: int | None = None
+    player_box: list[float] | None = Field(default=None, sa_column=Column(JSON))
 
 
 class Job(SQLModel, table=True):
@@ -91,3 +110,29 @@ class Job(SQLModel, table=True):
     result: dict | None = Field(default=None, sa_column=Column(JSON))
     error: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class CourtCalibration(SQLModel, table=True):
+    __tablename__ = "court_calibration"
+
+    id: int | None = Field(default=None, primary_key=True)
+    video_id: int = Field(foreign_key="video.id", ondelete="CASCADE", index=True)
+    from_time: float = 0
+    # 6 normalized [x, y]: our baseline L/R, far baseline R/L, center line L/R (see cv.geometry)
+    points: list[list[float]] = Field(default_factory=list, sa_column=_json_list())
+
+
+class Suggestion(SQLModel, table=True):
+    """A CV-proposed action of our team waiting for the user's confirmation."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="game_set.id", ondelete="CASCADE", index=True)
+    time: float
+    skill: str
+    confidence: float = 0
+    ball: list[float] = Field(default_factory=list, sa_column=_json_list())
+    player_box: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    player_id: int | None = None  # predicted by the player classifier, if one is trained
+    player_confidence: float | None = None
+    analyzer: str | None = None  # analyzer name + model versions, to compare runs
+    status: str = "pending"  # pending / accepted / rejected

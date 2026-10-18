@@ -12,7 +12,19 @@ import {
   includedRallies,
   loadHighlightsFx,
 } from '@/features/highlights'
-import { createSetFx, deleteSetFx, loadMatchFx, matchesErrorStore, matchStore, SetList } from '@/features/matches'
+import {
+  createSetFx,
+  createVenueFx,
+  deleteSetFx,
+  loadMatchFx,
+  loadVenuesFx,
+  matchesErrorStore,
+  matchStore,
+  SetList,
+  updateMatchFx,
+  VenueSelect,
+  venuesStore,
+} from '@/features/matches'
 import { loadMatchStatsFx, matchStatsStore, PlayerStatsTable, RotationTable, statsErrorStore, TeamSummary, teamTotals } from '@/features/stats'
 import { formatDate } from '@/shared/lib/format'
 import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
@@ -28,13 +40,14 @@ export function MatchPage({ matchId }: { matchId: number }) {
   const [match, matchError, creatingSet] = useUnit([matchStore, matchesErrorStore, createSetFx.pending])
   const [stats, statsError] = useUnit([matchStatsStore, statsErrorStore])
   const [groups, excluded, exports, highlightsError] = useUnit([highlightsStore, excludedStore, exportsStore, highlightsErrorStore])
-  const [teams, teamId] = useUnit([teamsStore, currentTeamIdStore])
+  const [teams, teamId, venues] = useUnit([teamsStore, currentTeamIdStore, venuesStore])
   const [tab, setTab] = useState<TabKey>('sets')
   const [statsSet, setStatsSet] = useState<number | null>(null)
   const [, navigate] = useLocation()
 
   useEffect(() => {
     void loadMatchFx(matchId)
+    void loadVenuesFx()
   }, [matchId])
 
   useEffect(() => {
@@ -58,6 +71,14 @@ export function MatchPage({ matchId }: { matchId: number }) {
           {teamName} — {match.opponent}
         </h1>
         <span class="text-sm text-zinc-500">{formatDate(match.date)}</span>
+        <div class="w-48" title="Зал определяет, какими моделями размечается видео">
+          <VenueSelect
+            venues={venues}
+            value={match.venue_id}
+            onChange={(id) => void updateMatchFx({ id: match.id, patch: { venue_id: id } })}
+            onCreate={createVenueFx}
+          />
+        </div>
         <span class="ml-auto text-2xl font-bold tabular">
           <span class="text-rose-400">{match.sets_won}</span>:{match.sets_lost}
         </span>

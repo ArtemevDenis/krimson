@@ -1,8 +1,9 @@
-export { startRallyDetection } from './api/workspace-api'
+export { startAnalysis } from './api/workspace-api'
 export { isTextField, videoHotkey } from './model/hotkeys'
 export { playerController } from './model/player-controller'
 export { playersById, rallyAtTime } from './model/rally-logic'
 export {
+  activeSuggestionIdStore,
   commandErrorStore,
   commandSubmitted,
   deleteActionFx,
@@ -11,6 +12,7 @@ export {
   draftStore,
   errorDismissed,
   loadWorkspaceFx,
+  nextSuggestionRequested,
   numberPicked,
   pendingSubsCleared,
   pendingSubsStore,
@@ -18,6 +20,7 @@ export {
   runCommandFx,
   selectedRallyIdStore,
   substitutionQueued,
+  suggestionActivated,
   undoFx,
   undoRequested,
   updateRallyFx,
@@ -35,3 +38,5 @@ export { RallyTimeline } from './ui/rally-timeline'
 export { Scoreboard } from './ui/scoreboard'
 export { SubstitutionForm } from './ui/substitution-form'
 export { VideoPlayer } from './ui/video-player'
+export { SuggestionBar } from './ui/suggestion-bar'
+export { SuggestionOverlay } from './ui/suggestion-overlay'

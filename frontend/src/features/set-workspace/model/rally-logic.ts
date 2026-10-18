@@ -1,4 +1,4 @@
-import type { PlayerType, RallyStateType, RallyType, SkillType, WorkspaceType } from '@/shared/api/schemas'
+import type { PlayerType, RallyStateType, RallyType, SkillType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
 
 /** Lead-in so a clip starting at the mark still shows the serve toss. */
 export const START_LEAD_SECONDS = 1
@@ -63,4 +63,22 @@ export function rallyDuration(rally: RallyType): number | null {
 
 export function rallyAtTime(ws: WorkspaceType, time: number): RallyType | null {
   return ws.rallies.find((r) => r.start_time !== null && r.end_time !== null && time >= r.start_time && time <= r.end_time) ?? null
+}
+
+/** How long after a rally's end codes still go to it (typing the line right after the whistle). */
+const LIVE_TAIL_SECONDS = 3
+
+/** Live-mode target: an unfinished rally around the current moment (auto-detected ones have bounds),
+ * or the manual one still in progress (no end yet). Otherwise codes start a new rally. */
+export function liveRally(ws: WorkspaceType, time: number): RallyType | null {
+  const around = ws.rallies.find(
+    (r) => r.winner === null && r.start_time !== null && r.end_time !== null && time >= r.start_time - 0.5 && time <= r.end_time + LIVE_TAIL_SECONDS,
+  )
+  if (around) return around
+  const open = openRally(ws)
+  return open && open.end_time === null ? open : null
+}
+
+export function nextSuggestion(ws: WorkspaceType, after: number): SuggestionType | null {
+  return ws.suggestions.find((s) => s.time > after + 0.05) ?? null
 }

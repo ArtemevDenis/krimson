@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks'
-import type { PlayerType, RallyType } from '@/shared/api/schemas'
+import type { PlayerType, RallyType, SuggestionType } from '@/shared/api/schemas'
 import { formatTime } from '@/shared/lib/format'
 import { EVALUATION_LABELS, EVALUATION_TONE, SKILL_LABELS, playerLabel } from '@/shared/lib/volleyball'
 import { EmptyState } from '@/shared/ui/feedback'
@@ -7,6 +7,9 @@ import { formatActionCode } from '../model/code-parser'
 
 type Props = {
   rallies: RallyType[]
+  suggestions: SuggestionType[]
+  activeSuggestionId: number | null
+  onSuggestion: (s: SuggestionType) => void
   players: Map<number, PlayerType>
   selectedId: number | null
   playingId: number | null
@@ -36,6 +39,9 @@ export function RallyList(props: Props) {
       {rallies.map((r) => {
         const selected = r.id === selectedId
         const playing = r.id === playingId
+        const hints = props.suggestions.filter(
+          (s) => r.start_time !== null && r.end_time !== null && s.time >= r.start_time && s.time <= r.end_time,
+        )
         const border = r.winner === 'us' ? 'border-l-rose-500' : r.winner === 'them' ? 'border-l-slate-500' : 'border-l-amber-400'
         return (
           <li
@@ -69,6 +75,25 @@ export function RallyList(props: Props) {
                 ▶
               </button>
             </div>
+
+            {hints.length > 0 && (
+              <div class="mt-1 flex flex-wrap gap-1 pl-9">
+                {hints.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    title={`Подсказка ${formatTime(s.time)}, уверенность ${Math.round(s.confidence * 100)}%`}
+                    class={`rounded border border-dashed px-1.5 py-0.5 font-mono text-xs ${
+                      s.id === props.activeSuggestionId ? 'border-sky-400 bg-sky-900 text-white' : 'border-sky-800 text-sky-300 hover:border-sky-500'
+                    }`}
+                    onClick={() => props.onSuggestion(s)}
+                  >
+                    {s.player_id !== null ? (players.get(s.player_id)?.number ?? '') : ''}
+                    {s.skill}?
+                  </button>
+                ))}
+              </div>
+            )}
 
             {r.actions.length > 0 && (
               <div class="mt-1 flex flex-wrap gap-1 pl-9">

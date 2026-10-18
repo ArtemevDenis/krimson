@@ -4,7 +4,8 @@ from sqlmodel import Session, select
 
 from app.db import get_session
 from app.domain.roster import POSITIONS, parse_roster
-from app.models import Player, Team
+from app.modelstore import slugify, unique_slug
+from app.models import Player, Team, Venue
 from app.services.sets import get_or_404, team_players
 
 router = APIRouter(prefix="/api", tags=["teams"])
@@ -45,7 +46,9 @@ def list_teams(session: Session = Depends(get_session)) -> list[Team]:
 
 @router.post("/teams")
 def create_team(body: TeamIn, session: Session = Depends(get_session)) -> Team:
-    team = Team(name=body.name)
+    # Unique, so two teams never share player models in models/team/<slug>
+    taken = {t.slug for t in session.exec(select(Team)) if t.slug}
+    team = Team(name=body.name, slug=unique_slug(body.name, taken))
     session.add(team)
     session.commit()
     session.refresh(team)
@@ -118,3 +121,42 @@ def update_player(player_id: int, body: PlayerPatch, session: Session = Depends(
 def delete_player(player_id: int, session: Session = Depends(get_session)) -> None:
     session.delete(get_or_404(session, Player, player_id))
     session.commit()
+
+
+# --- venues ----------------------------------------------------------------
+
+class VenueIn(BaseModel):
+    name: str
+
+
+@router.get("/venues")
+def list_venues(session: Session = Depends(get_session)) -> list[Venue]:
+    return list(session.exec(select(Venue).order_by(Venue.name)))
+
+
+@router.post("/venues")
+def create_venue(body: VenueIn, session: Session = Depends(get_session)) -> Venue:
+    """Same name on another device gives the same slug, so models pulled from git attach to it."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Пустое название зала")
+    slug = slugify(name)
+    existing = session.exec(select(Venue).where(Venue.slug == slug)).first()
+    if existing:
+        return existing
+    venue = Venue(name=name, slug=slug)
+    session.add(venue)
+    session.commit()
+    session.refresh(venue)
+    return venue
+
+
+@router.patch("/venues/{venue_id}")
+def rename_venue(venue_id: int, body: VenueIn, session: Session = Depends(get_session)) -> Venue:
+    """Only the display name changes; the slug (and with it the models link) stays."""
+    venue = get_or_404(session, Venue, venue_id)
+    venue.name = body.name.strip() or venue.name
+    session.add(venue)
+    session.commit()
+    session.refresh(venue)
+    return venue

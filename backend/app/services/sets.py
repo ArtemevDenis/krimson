@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from app.domain import rotation, stats
-from app.models import Action, GameSet, Match, Player, Rally, Video
+from app.models import Action, GameSet, Match, Player, Rally, Suggestion, Video
 
 
 def get_or_404[T](session: Session, model: type[T], obj_id: int) -> T:
@@ -89,6 +89,12 @@ def workspace(session: Session, set_id: int) -> dict:
                 "state": asdict(states[i]) if states else None,
             }
             for i, (rally, actions) in enumerate(rallies)
+        ],
+        "suggestions": [
+            sg.model_dump()
+            for sg in session.exec(
+                select(Suggestion).where(Suggestion.set_id == set_id, Suggestion.status == "pending").order_by(Suggestion.time)
+            )
         ],
         "current": asdict(final) if final else None,
         "finished": rotation.is_set_finished(final.our_score, final.their_score, game_set.number) if final else False,

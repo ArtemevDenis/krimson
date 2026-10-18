@@ -25,6 +25,15 @@ export const playerController = {
   pause() {
     element?.pause()
   },
+  /** Current frame as an image (same-origin video, so the canvas isn't tainted). */
+  captureFrame(): { image: string; time: number } | null {
+    if (!element || element.readyState < 2 || !element.videoWidth) return null
+    const canvas = document.createElement('canvas')
+    canvas.width = element.videoWidth
+    canvas.height = element.videoHeight
+    canvas.getContext('2d')?.drawImage(element, 0, 0)
+    return { image: canvas.toDataURL('image/jpeg', 0.85), time: element.currentTime }
+  },
   setRate(rate: number) {
     if (element) element.playbackRate = rate
   },

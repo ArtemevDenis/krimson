@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { Link, Route, Switch, useLocation } from 'wouter-preact'
 import { currentTeamIdStore, loadTeamsFx, teamSelected, teamsLoadedStore, teamsStore } from '@/shared/model/team-model'
 import { Select } from '@/shared/ui/form'
+import { LearningPage } from '@/pages/learning-page'
 import { MatchPage } from '@/pages/match-page'
 import { MatchesPage } from '@/pages/matches-page'
 import { OnboardingPage } from '@/pages/onboarding-page'
@@ -40,6 +41,7 @@ export function App() {
           <NavLink href="/" label="Матчи" />
           <NavLink href="/team" label="Состав" />
           <NavLink href="/season" label="Статистика сезона" />
+          <NavLink href="/learning" label="Обучение" />
         </nav>
         <div class="ml-auto w-56">
           <Select value={teamId ?? ''} onChange={(e) => teamSelected(Number(e.currentTarget.value))}>
@@ -56,6 +58,7 @@ export function App() {
           <Route path="/" component={MatchesPage} />
           <Route path="/team" component={TeamPage} />
           <Route path="/season" component={SeasonPage} />
+          <Route path="/learning" component={LearningPage} />
           <Route path="/matches/:id">{(params) => <MatchPage matchId={Number(params.id)} />}</Route>
           <Route path="/sets/:id">{(params) => <SetPage setId={Number(params.id)} />}</Route>
           <Route>

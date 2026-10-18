@@ -1,4 +1,5 @@
 import datetime as dt
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -7,7 +8,7 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.domain import rotation
 from app.domain.scouting import EVALUATIONS, SKILLS, terminal_winner
-from app.models import Action, GameSet, Match, Player, Rally, Team, Video
+from app.models import Action, GameSet, Match, Player, Rally, Suggestion, Team, Venue, Video
 from app.services import jobs
 from app.services.sets import get_or_404, load_rallies, replay_set, team_players, workspace
 
@@ -18,6 +19,7 @@ class MatchIn(BaseModel):
     team_id: int
     opponent: str
     date: dt.date
+    venue_id: int | None = None
     venue: str | None = None
     notes: str | None = None
 
@@ -25,11 +27,13 @@ class MatchIn(BaseModel):
 class MatchPatch(BaseModel):
     opponent: str | None = None
     date: dt.date | None = None
+    venue_id: int | None = None
     venue: str | None = None
     notes: str | None = None
 
 
 class SetPatch(BaseModel):
+    verified: bool | None = None
     number: int | None = None
     video_id: int | None = None
     lineup: list[int] | None = None
@@ -65,6 +69,7 @@ class ActionIn(BaseModel):
     skill: str
     evaluation: str
     video_time: float | None = None
+    suggestion_id: int | None = None
 
 
 class ActionPatch(BaseModel):
@@ -74,8 +79,12 @@ class ActionPatch(BaseModel):
     video_time: float | None = None
 
 
-class DetectIn(BaseModel):
-    detector: str | None = None
+class AnalyzeIn(BaseModel):
+    analyzer: str | None = None
+
+
+class SuggestionPatch(BaseModel):
+    status: str = Field(pattern="^(pending|accepted|rejected)$")
 
 
 def _set_summary(session: Session, game_set: GameSet, players: list[Player]) -> dict:
@@ -95,8 +104,10 @@ def _match_summary(session: Session, match: Match) -> dict:
     players = team_players(session, match.team_id)
     sets = session.exec(select(GameSet).where(GameSet.match_id == match.id).order_by(GameSet.number)).all()
     summaries = [_set_summary(session, s, players) for s in sets]
+    venue = session.get(Venue, match.venue_id) if match.venue_id else None
     return {
         **match.model_dump(mode="json"),
+        "venue_name": venue.name if venue else match.venue,
         "sets": summaries,
         "sets_won": sum(1 for s in summaries if s["finished"] and s["our_score"] > s["their_score"]),
         "sets_lost": sum(1 for s in summaries if s["finished"] and s["our_score"] < s["their_score"]),
@@ -120,6 +131,21 @@ def _validate_lineup(session: Session, game_set: GameSet, lineup: list[int] | No
             raise HTTPException(422, "В расстановке игрок не из состава команды")
     if liberos is not None and not set(liberos) <= roster:
         raise HTTPException(422, "Либеро не из состава команды")
+
+
+def _order_by_time(session: Session, set_id: int) -> None:
+    """Rallies created by hand among auto-detected ones must land in video order, since the score replay
+    runs in index order. Rallies without any time keep their relative position."""
+    rallies = list(session.exec(select(Rally).where(Rally.set_id == set_id).order_by(Rally.index)))
+    last_time = 0.0
+    keyed = []
+    for r in rallies:
+        t = r.start_time if r.start_time is not None else r.end_time
+        last_time = t if t is not None else last_time
+        keyed.append((last_time, r.index, r))
+    for i, (_, _, r) in enumerate(sorted(keyed, key=lambda k: (k[0], k[1]))):
+        r.index = i
+        session.add(r)
 
 
 def _reindex(session: Session, set_id: int) -> None:
@@ -206,6 +232,8 @@ def update_set(set_id: int, body: SetPatch, session: Session = Depends(get_sessi
         get_or_404(session, Video, data["video_id"])
     for k, v in data.items():
         setattr(game_set, k, v)
+    if "verified" in data:
+        game_set.verified_at = datetime.now(UTC) if data["verified"] else None
     session.add(game_set)
     session.commit()
     return workspace(session, set_id)
@@ -217,13 +245,22 @@ def delete_set(set_id: int, session: Session = Depends(get_session)) -> None:
     session.commit()
 
 
-@router.post("/sets/{set_id}/detect-rallies")
-def detect_rallies(set_id: int, body: DetectIn, session: Session = Depends(get_session)) -> dict:
+@router.post("/sets/{set_id}/analyze")
+def analyze_set(set_id: int, body: AnalyzeIn, session: Session = Depends(get_session)) -> dict:
     game_set = get_or_404(session, GameSet, set_id)
     if game_set.video_id is None:
         raise HTTPException(422, "Сначала привяжите видео к партии")
-    job = jobs.submit(session, "detect_rallies", {"set_id": set_id, "detector": body.detector})
+    job = jobs.submit(session, "analyze_set", {"set_id": set_id, "analyzer": body.analyzer})
     return job.model_dump(mode="json")
+
+
+@router.patch("/suggestions/{suggestion_id}")
+def update_suggestion(suggestion_id: int, body: SuggestionPatch, session: Session = Depends(get_session)) -> dict:
+    suggestion = get_or_404(session, Suggestion, suggestion_id)
+    suggestion.status = body.status
+    session.add(suggestion)
+    session.commit()
+    return workspace(session, suggestion.set_id)
 
 
 # --- rallies ---------------------------------------------------------------
@@ -235,6 +272,8 @@ def create_rally(set_id: int, body: RallyIn, session: Session = Depends(get_sess
     data = body.model_dump()
     rally = Rally(set_id=set_id, index=(last.index + 1) if last else 0, **data)
     session.add(rally)
+    session.flush()
+    _order_by_time(session, set_id)
     session.commit()
     return workspace(session, set_id)
 
@@ -267,7 +306,12 @@ def add_action(rally_id: int, body: ActionIn, session: Session = Depends(get_ses
     rally = get_or_404(session, Rally, rally_id)
     _validate_skill(body.skill, body.evaluation)
     last = session.exec(select(Action).where(Action.rally_id == rally_id).order_by(Action.order.desc())).first()
-    session.add(Action(rally_id=rally_id, order=(last.order + 1) if last else 0, **body.model_dump()))
+    action = Action(rally_id=rally_id, order=(last.order + 1) if last else 0, **body.model_dump())
+    if body.suggestion_id is not None and (suggestion := session.get(Suggestion, body.suggestion_id)):
+        suggestion.status = "accepted"
+        action.player_box = suggestion.player_box
+        session.add(suggestion)
+    session.add(action)
     if rally.winner is None and (winner := terminal_winner(body.skill, body.evaluation)):
         rally.winner = winner
         if rally.end_time is None and body.video_time is not None:

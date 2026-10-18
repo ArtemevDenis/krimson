@@ -17,6 +17,7 @@ export function SetList({ sets, onOpen, onDelete }: Props) {
         <li key={s.id} class="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2.5">
           <button type="button" class="flex flex-1 items-center gap-3 text-left" onClick={() => onOpen(s.id)}>
             <span class="text-sm font-semibold">Партия {s.number}</span>
+            {s.verified && <span class="text-xs text-emerald-400" title="Проверена — участвует в обучении">✓</span>}
             <span class={`text-lg font-bold tabular ${s.our_score > s.their_score ? 'text-rose-400' : 'text-zinc-300'}`}>
               {s.our_score}:{s.their_score}
             </span>

@@ -1,14 +1,25 @@
-from app.cv.base import RallyDetector
-from app.cv.detectors.noop import NoopRallyDetector
+import importlib.util
 
-_rally_detectors: dict[str, RallyDetector] = {d.name: d for d in (NoopRallyDetector(),)}
-
-DEFAULT_RALLY_DETECTOR = "noop"
+from app.cv.base import Analyzer
+from app.cv.detectors.noop import NoopAnalyzer
 
 
-def rally_detector(name: str | None = None) -> RallyDetector:
-    return _rally_detectors[name or DEFAULT_RALLY_DETECTOR]
+def cv_installed() -> bool:
+    return all(importlib.util.find_spec(m) is not None for m in ("ultralytics", "cv2", "torch"))
 
 
-def available_rally_detectors() -> list[str]:
-    return list(_rally_detectors)
+def analyzer(name: str | None = None) -> Analyzer:
+    name = name or default_analyzer()
+    if name == "noop":
+        return NoopAnalyzer()
+    if name == "ball-tracking":
+        if not cv_installed():
+            raise RuntimeError("CV-зависимости не установлены: выполните `uv sync --extra cv` в папке backend")
+        from app.cv.detectors.ball_tracking import BallTrackingAnalyzer
+
+        return BallTrackingAnalyzer()
+    raise ValueError(f"Неизвестный анализатор {name}")
+
+
+def default_analyzer() -> str:
+    return "ball-tracking" if cv_installed() else "noop"

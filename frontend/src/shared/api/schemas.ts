@@ -58,6 +58,7 @@ const gameSetBase = {
   lineup: z.array(z.number()),
   libero_ids: z.array(z.number()),
   we_serve_first: z.boolean(),
+  verified: z.boolean(),
 }
 
 export const gameSetSchema = z.object(gameSetBase)
@@ -73,16 +74,21 @@ export const setSummarySchema = z.object({
 })
 export type SetSummaryType = z.infer<typeof setSummarySchema>
 
+export const venueSchema = z.object({ id: z.number(), name: z.string(), slug: z.string() })
+export type VenueType = z.infer<typeof venueSchema>
+
 export const matchSchema = z.object({
   id: z.number(),
   team_id: z.number(),
   opponent: z.string(),
   date: z.string(),
   venue: z.string().nullable(),
+  venue_id: z.number().nullable(),
   notes: z.string().nullable(),
 })
 
 export const matchSummarySchema = matchSchema.extend({
+  venue_name: z.string().nullable(),
   sets: z.array(setSummarySchema),
   sets_won: z.number(),
   sets_lost: z.number(),
@@ -131,12 +137,36 @@ export const rallySchema = z.object({
 })
 export type RallyType = z.infer<typeof rallySchema>
 
+export const suggestionSchema = z.object({
+  id: z.number(),
+  set_id: z.number(),
+  time: z.number(),
+  skill: skillSchema,
+  confidence: z.number(),
+  ball: z.array(z.number()),
+  player_box: z.array(z.number()).nullable(),
+  player_id: z.number().nullable(),
+  player_confidence: z.number().nullable(),
+  status: z.enum(['pending', 'accepted', 'rejected']),
+})
+export type SuggestionType = z.infer<typeof suggestionSchema>
+
+export const calibrationSchema = z.object({
+  id: z.number(),
+  video_id: z.number(),
+  from_time: z.number(),
+  points: z.array(z.tuple([z.number(), z.number()])),
+  error_m: z.number(),
+})
+export type CalibrationType = z.infer<typeof calibrationSchema>
+
 export const workspaceSchema = z.object({
   set: gameSetSchema,
   match: matchSchema,
   video: videoSchema.nullable(),
   players: z.array(playerSchema),
   rallies: z.array(rallySchema),
+  suggestions: z.array(suggestionSchema),
   current: rallyStateSchema.nullable(),
   finished: z.boolean(),
 })
@@ -215,3 +245,84 @@ export const highlightGroupSchema = z.object({
   rallies: z.array(highlightRallySchema),
 })
 export type HighlightGroupType = z.infer<typeof highlightGroupSchema>
+
+const ratioOrNull = z.number().nullable()
+
+export const analyzerMetricsSchema = z.object({
+  rallies_true: z.number(),
+  rallies_found: z.number(),
+  rallies_false: z.number(),
+  rally_precision: ratioOrNull,
+  rally_recall: ratioOrNull,
+  rally_f1: z.number(),
+  start_error_s: ratioOrNull,
+  end_error_s: ratioOrNull,
+  action_precision: ratioOrNull,
+  action_recall: ratioOrNull,
+  action_f1: z.number(),
+})
+export type AnalyzerMetricsType = z.infer<typeof analyzerMetricsSchema>
+
+export const evaluationReportSchema = z.object({
+  overall: analyzerMetricsSchema,
+  sets: z.array(analyzerMetricsSchema.extend({ set_id: z.number(), label: z.string() })),
+  skipped: z.array(z.string()).optional(),
+  at: z.string().optional(),
+})
+export type EvaluationReportType = z.infer<typeof evaluationReportSchema>
+
+export const modelVersionSchema = z.object({
+  scope: z.string(),
+  kind: z.string(),
+  version: z.string(),
+  active: z.boolean(),
+  created: z.string(),
+  metrics: z.record(z.string(), z.unknown()).optional(),
+  baseline: z.record(z.string(), z.unknown()).optional(),
+  base: z.string().optional(),
+})
+export type ModelVersionType = z.infer<typeof modelVersionSchema>
+
+export const learningScopeSchema = z.object({
+  scope: z.string(),
+  kind: z.enum(['general', 'venue', 'team']),
+  label: z.string(),
+  verified_sets: z.number(),
+})
+export type LearningScopeType = z.infer<typeof learningScopeSchema>
+
+export const learningSummarySchema = z.object({
+  scope: z.string(),
+  scope_kind: z.enum(['general', 'venue', 'team']),
+  profile: z.string().nullable(),
+  cv_installed: z.boolean(),
+  total_sets: z.number(),
+  verified_sets: z.array(
+    z.object({
+      set_id: z.number(),
+      label: z.string(),
+      rallies: z.number(),
+      actions: z.number(),
+      precise_actions: z.number(),
+      with_player_box: z.number(),
+      has_detections: z.boolean(),
+      has_calibration: z.boolean(),
+    }),
+  ),
+  players: z.array(z.object({ player_id: z.number(), number: z.number().nullable(), name: z.string(), examples: z.number() })),
+  suggestions: z.object({ accepted: z.number(), corrected: z.number(), rejected: z.number(), pending: z.number() }),
+  readiness: z.object({
+    tune: z.boolean(),
+    ball: z.boolean(),
+    players: z.boolean(),
+    min_sets_ball: z.number(),
+    min_examples_player: z.number(),
+  }),
+  last_evaluation: evaluationReportSchema.nullable(),
+  datasets: z.object({
+    ball: z.object({ images: z.object({ train: z.number(), val: z.number() }) }).nullable(),
+    players: z.object({ players: z.record(z.string(), z.number()) }).nullable(),
+  }),
+  versions: z.record(z.string(), z.array(modelVersionSchema)),
+})
+export type LearningSummaryType = z.infer<typeof learningSummarySchema>

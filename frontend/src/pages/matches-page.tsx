@@ -1,13 +1,29 @@
 import { useUnit } from 'effector-react'
 import { useLocation } from 'wouter-preact'
-import { createMatchFx, deleteMatchFx, MatchForm, MatchList, matchesErrorStore, matchesStore } from '@/features/matches'
+import { useEffect } from 'preact/hooks'
+import {
+  createMatchFx,
+  createVenueFx,
+  deleteMatchFx,
+  loadVenuesFx,
+  MatchForm,
+  MatchList,
+  matchesErrorStore,
+  matchesStore,
+  venuesStore,
+} from '@/features/matches'
 import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
 import { Card } from '@/shared/ui/card'
 import { ErrorBanner } from '@/shared/ui/feedback'
 
 export function MatchesPage() {
   const [matches, error, teamId, teams, pending] = useUnit([matchesStore, matchesErrorStore, currentTeamIdStore, teamsStore, createMatchFx.pending])
+  const venues = useUnit(venuesStore)
   const [, navigate] = useLocation()
+
+  useEffect(() => {
+    void loadVenuesFx()
+  }, [])
   const teamName = teams.find((t) => t.id === teamId)?.name ?? ''
 
   return (
@@ -16,6 +32,8 @@ export function MatchesPage() {
       <Card title="Новый матч">
         <MatchForm
           pending={pending}
+          venues={venues}
+          onCreateVenue={createVenueFx}
           onSubmit={(draft) => {
             if (teamId === null) return
             void createMatchFx({ team_id: teamId, ...draft }).then((m) => navigate(`/matches/${m.id}`))

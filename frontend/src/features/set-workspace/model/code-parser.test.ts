@@ -31,6 +31,13 @@ describe('parseCommandLine', () => {
     })
   })
 
+  it('parses suggestion shortcuts', () => {
+    expect(parseCommandLine('31+ ч')).toEqual({
+      ok: true,
+      commands: [{ kind: 'quick', number: 31, evaluation: '+' }, { kind: 'reject' }],
+    })
+  })
+
   it('rejects unknown codes', () => {
     const result = parseCommandLine('15x#')
     expect(result.ok).toBe(false)

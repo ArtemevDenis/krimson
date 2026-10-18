@@ -10,11 +10,12 @@ type Props = {
   onChange: (text: string) => void
   onSubmit: () => void
   onUndo: () => void
+  onNext: () => void
   onExitEdit: () => void
   onDismissError: () => void
 }
 
-export function CodeInput({ value, pending, error, editingLabel, onChange, onSubmit, onUndo, onExitEdit, onDismissError }: Props) {
+export function CodeInput({ value, pending, error, editingLabel, onChange, onSubmit, onUndo, onNext, onExitEdit, onDismissError }: Props) {
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -47,7 +48,9 @@ export function CodeInput({ value, pending, error, editingLabel, onChange, onSub
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              if (!pending) onSubmit()
+              if (pending) return
+              if (value.trim()) onSubmit()
+              else onNext()
             } else if (e.key === 'Backspace' && value === '') {
               e.preventDefault()
               if (!pending) onUndo()
