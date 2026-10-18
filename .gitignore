@@ -1,0 +1,10 @@
+data/
+video/
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.local

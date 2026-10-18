@@ -1,0 +1,30 @@
+import { useUnit } from 'effector-react'
+import { useLocation } from 'wouter-preact'
+import { createMatchFx, deleteMatchFx, MatchForm, MatchList, matchesErrorStore, matchesStore } from '@/features/matches'
+import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
+import { Card } from '@/shared/ui/card'
+import { ErrorBanner } from '@/shared/ui/feedback'
+
+export function MatchesPage() {
+  const [matches, error, teamId, teams, pending] = useUnit([matchesStore, matchesErrorStore, currentTeamIdStore, teamsStore, createMatchFx.pending])
+  const [, navigate] = useLocation()
+  const teamName = teams.find((t) => t.id === teamId)?.name ?? ''
+
+  return (
+    <div class="mx-auto flex max-w-5xl flex-col gap-4">
+      <ErrorBanner message={error} />
+      <Card title="Новый матч">
+        <MatchForm
+          pending={pending}
+          onSubmit={(draft) => {
+            if (teamId === null) return
+            void createMatchFx({ team_id: teamId, ...draft }).then((m) => navigate(`/matches/${m.id}`))
+          }}
+        />
+      </Card>
+      <Card title="Матчи">
+        <MatchList matches={matches} teamName={teamName} onOpen={(id) => navigate(`/matches/${id}`)} onDelete={(id) => void deleteMatchFx(id)} />
+      </Card>
+    </div>
+  )
+}

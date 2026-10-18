@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-us: #e11d48;
+  --color-them: #64748b;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
