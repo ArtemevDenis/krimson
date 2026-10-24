@@ -41,11 +41,12 @@ class PlayerStats:
         ace, serve_err = self.n("S", "#"), self.n("S", "=")
         kill, att_err, blocked = self.n("A", "#"), self.n("A", "="), self.n("A", "/")
         block_pts = self.n("B", "#")
+        over_pts = self.n("G", "#")
         return {
             "player_id": self.player_id,
             "rallies_on_court": self.rallies_on_court,
-            "points": ace + kill + block_pts,
-            "errors": sum(self.counts[s]["="] for s in SKILLS) + self.n("B", "/"),
+            "points": ace + kill + block_pts + over_pts,
+            "errors": sum(self.counts[s]["="] for s in SKILLS) + self.n("B", "/") + self.n("G", "/"),
             "serve": {"total": serve_total, "ace": ace, "error": serve_err, "eff": ratio(ace - serve_err, serve_total)},
             "reception": {
                 "total": rec_total,
@@ -66,6 +67,8 @@ class PlayerStats:
             "block": {"total": self.total("B"), "point": block_pts, "error": self.n("B", "=", "/")},
             "dig": {"total": self.total("D"), "positive": self.n("D", "#", "+"), "error": self.n("D", "=")},
             "set": {"total": self.total("E"), "error": self.n("E", "=")},
+            # Balls given over without an attack: many of them mean the team often can't build an attack
+            "over": {"total": self.total("G"), "point": over_pts, "error": self.n("G", "=", "/")},
             "faults": {"total": sum(self.faults.values()), **{k: self.faults[k] for k in FAULTS}},
             "raw": {s: {e: self.counts[s][e] for e in EVALUATIONS} for s in SKILLS},
         }

@@ -76,7 +76,9 @@ def load_verified(session: Session, venue_slug: str | None = None, team_slug: st
                 select(Action).where(Action.rally_id == r.id, Action.skill != FAULT_SKILL).order_by(Action.order)
             ).all()
             rallies.append(GtRally(r.id, r.start_time, r.end_time, [
-                GtAction(a.id, a.video_time, a.skill, a.player_id, a.suggestion_id is not None, a.player_box) for a in acts
+                # The analyzer can't tell a ball given over from an attack: both are the third touch over the net
+                GtAction(a.id, a.video_time, "A" if a.skill == "G" else a.skill, a.player_id, a.suggestion_id is not None, a.player_box)
+                for a in acts
             ]))
         caches = detection.existing_sidecars(path, config.DATA_DIR / "cv")
         sets.append(GtSet(

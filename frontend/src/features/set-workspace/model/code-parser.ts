@@ -31,6 +31,7 @@ const RU_TO_LATIN: Record<string, string> = {
   'ч': 'x',
   '.': '/',
   // violations: v + type (n, c, d, h, f, 4, r) — к, в, а are already mapped above
+  'п': 'g',
   'м': 'v',
   'т': 'n',
   'с': 'c',
@@ -42,7 +43,7 @@ const invert = (codes: Record<FaultType, string>) =>
 const FAULT_KEYS = invert(FAULT_CODES)
 const FAULT_KEYS_RU = invert(FAULT_CODES_RU)
 
-const ACTION_RE = /^(\d{1,2})?([srabdef])([#+!\-/=])$/
+const ACTION_RE = /^(\d{1,2})?([srabdefg])([#+!\-/=])$/
 const QUICK_RE = /^(\d{1,2})([#+!\-/=])$/
 const FAULT_RE = /^(\d{1,2})?v([ncdhf4r])$/
 // Russian mnemonics are matched before the keyboard-layout mapping, which would scramble them

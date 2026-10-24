@@ -13,6 +13,7 @@ const row = (attack: { total: number; kill: number; error: number; blocked: numb
   block: { total: 0, point: 0, error: 0 },
   dig: { total: 0, positive: 0, error: 0 },
   set: { total: 0, error: 0 },
+  over: { total: 0, point: 0, error: 0 },
   faults: { total: 0 },
   raw: {},
 })

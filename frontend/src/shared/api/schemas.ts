@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const sideSchema = z.enum(['us', 'them'])
 export const positionSchema = z.enum(['S', 'OH', 'OPP', 'MB', 'L'])
-export const skillSchema = z.enum(['S', 'R', 'A', 'B', 'D', 'E', 'F', 'N'])
+export const skillSchema = z.enum(['S', 'R', 'A', 'B', 'D', 'E', 'F', 'G', 'N'])
 /** Kind of violation for skill N (a rule fault, not a ball touch); `foot` is a serve error S= */
 export const faultSchema = z.enum(['foot', 'net', 'line', 'double', 'catch', 'four', 'rotation'])
 export const evaluationSchema = z.enum(['#', '+', '!', '-', '/', '='])
@@ -217,6 +217,7 @@ export const playerStatsSchema = z.object({
   block: z.object({ total: z.number(), point: z.number(), error: z.number() }),
   dig: z.object({ total: z.number(), positive: z.number(), error: z.number() }),
   set: z.object({ total: z.number(), error: z.number() }),
+  over: z.object({ total: z.number(), point: z.number(), error: z.number() }).default({ total: 0, point: 0, error: 0 }),
   faults: z.record(z.string(), z.number()).default({ total: 0 }),
   raw: z.record(z.string(), z.record(z.string(), z.number())),
 })

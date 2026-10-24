@@ -24,11 +24,12 @@ export const SKILL_LABELS: Record<SkillType, string> = {
   D: 'Защита',
   E: 'Передача',
   F: 'Свободный',
+  G: 'Перевод',
   N: 'Нарушение',
 }
 
 /** Ball-touch elements; N (violation) is entered with its own code */
-export const SKILLS: SkillType[] = ['S', 'R', 'E', 'A', 'B', 'D', 'F']
+export const SKILLS: SkillType[] = ['S', 'R', 'E', 'A', 'G', 'B', 'D', 'F']
 
 export const FAULT_LABELS: Record<FaultType, string> = {
   foot: 'заступ при подаче',
@@ -57,6 +58,7 @@ export const EVALUATION_LABELS: Record<SkillType, Record<EvaluationType, string>
   D: { '#': 'идеально', '+': 'хорошо', '!': 'в игре', '-': 'плохо', '/': 'перебросил', '=': 'не поднял' },
   E: { '#': 'идеально', '+': 'хорошо', '!': 'в игре', '-': 'плохо', '/': 'перебросил', '=': 'ошибка' },
   F: { '#': 'идеально', '+': 'хорошо', '!': 'в игре', '-': 'плохо', '/': 'перебросил', '=': 'ошибка' },
+  G: { '#': 'очко', '+': 'соперник принял плохо', '!': 'принял с ограничениями', '-': 'принял хорошо', '/': 'заблокирован', '=': 'ошибка' },
   N: { '#': '', '+': '', '!': '', '-': '', '/': '', '=': 'нарушение' },
 }
 

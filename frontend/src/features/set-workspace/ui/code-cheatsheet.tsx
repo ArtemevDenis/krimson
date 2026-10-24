@@ -2,7 +2,7 @@ import type { SkillType } from '@/shared/api/schemas'
 import type { FaultType } from '@/shared/api/schemas'
 import { EVALUATION_LABELS, EVALUATION_TONE, EVALUATIONS, FAULT_CODES, FAULT_CODES_RU, FAULT_LABELS, SKILL_LABELS, SKILLS, TEAM_FAULTS } from '@/shared/lib/volleyball'
 
-const SKILL_KEYS: Record<Exclude<SkillType, 'N'>, string> = { S: 's / ы', R: 'r / к', A: 'a / ф', B: 'b / и', D: 'd / в', E: 'e / у', F: 'f / а' }
+const SKILL_KEYS: Record<Exclude<SkillType, 'N'>, string> = { S: 's / ы', R: 'r / к', A: 'a / ф', B: 'b / и', D: 'd / в', E: 'e / у', F: 'f / а', G: 'g / п' }
 
 export function CodeCheatsheet() {
   return (
@@ -66,7 +66,7 @@ export function CodeCheatsheet() {
           <code class="text-zinc-200">[</code> начало розыгрыша · <code class="text-zinc-200">]</code> конец ·{' '}
           <code class="text-zinc-200">+</code> очко нам · <code class="text-zinc-200">-</code> очко соперникам ·{' '}
           <code class="text-zinc-200">*</code> в избранное · Backspace в пустой строке — отменить последнее · Esc — выйти из
-          редактирования. Очки с кодами <code>#</code> на подаче/атаке/блоке и любые <code>=</code> закрывают розыгрыш сами.
+          редактирования. Очки с кодами <code>#</code> на подаче/атаке/переводе/блоке и любые <code>=</code> закрывают розыгрыш сами.
         </p>
       </div>
     </details>

@@ -64,6 +64,20 @@ describe('parseCommandLine', () => {
     })
   })
 
+  it('parses a ball given over, also on the Russian layout', () => {
+    expect(parseCommandLine('7r- 10e- 15g- 15п#')).toEqual({
+      ok: true,
+      commands: [
+        { kind: 'action', number: 7, skill: 'R', evaluation: '-' },
+        { kind: 'action', number: 10, skill: 'E', evaluation: '-' },
+        { kind: 'action', number: 15, skill: 'G', evaluation: '-' },
+        { kind: 'action', number: 15, skill: 'G', evaluation: '#' },
+      ],
+    })
+    // «нп» is still the rotation fault, not a ball given over
+    expect(parseCommandLine('нп')).toMatchObject({ commands: [{ kind: 'fault', fault: 'rotation' }] })
+  })
+
   it('parses rally commands', () => {
     expect(parseCommandLine('х ъ + - *')).toEqual({
       ok: true,

@@ -4,7 +4,7 @@ from typing import Literal
 
 from app.domain.rotation import Side
 
-Skill = Literal["S", "R", "A", "B", "D", "E", "F", "N"]
+Skill = Literal["S", "R", "A", "B", "D", "E", "F", "G", "N"]
 Evaluation = Literal["#", "+", "!", "-", "/", "="]
 
 SKILLS: dict[str, str] = {
@@ -15,6 +15,7 @@ SKILLS: dict[str, str] = {
     "D": "Защита",
     "E": "Передача",
     "F": "Свободный мяч",
+    "G": "Перевод",  # ball given over without an attack (a free ball to the opponent), so attack stats stay clean
     "N": "Нарушение",
 }
 
@@ -44,10 +45,11 @@ EVALUATION_LABELS: dict[str, dict[str, str]] = {
     "D": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "не поднял"},
     "E": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "ошибка"},
     "F": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "ошибка"},
+    "G": {"#": "очко", "+": "соперник принял плохо", "!": "соперник принял с ограничениями", "-": "соперник принял хорошо", "/": "заблокирован", "=": "ошибка"},
     "N": {"=": "нарушение"},
 }
 
-POINT_SKILLS = ("S", "A", "B")
+POINT_SKILLS = ("S", "A", "B", "G")
 
 
 def terminal_winner(skill: str, evaluation: str) -> Side | None:
@@ -56,6 +58,6 @@ def terminal_winner(skill: str, evaluation: str) -> Side | None:
         return "us"
     if evaluation == "=":
         return "them"
-    if evaluation == "/" and skill in ("A", "B"):
+    if evaluation == "/" and skill in ("A", "B", "G"):
         return "them"
     return None
