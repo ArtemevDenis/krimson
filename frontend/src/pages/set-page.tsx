@@ -40,6 +40,7 @@ import {
   undoRequested,
   updateRallyFx,
   updateSetFx,
+  clearSetFx,
   VideoPlayer,
   videoHotkey,
   workspaceClosed,
@@ -158,6 +159,20 @@ export function SetPage({ setId }: { setId: number }) {
         >
           {ws.set.verified ? '✓ Проверена' : 'Отметить проверенной'}
         </Button>
+        {ws.rallies.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            title="Удалить все розыгрыши и действия. Видео, разметка площадки и расстановка останутся"
+            onClick={() => {
+              if (confirm(`Удалить всю разметку партии (${ws.rallies.length} розыгр.)? Видео, площадка и расстановка останутся.`)) {
+                void clearSetFx()
+              }
+            }}
+          >
+            Очистить разметку
+          </Button>
+        )}
         <div class="ml-auto flex gap-2">
           {configured && (
             <Button size="sm" variant={panel === 'lineup' ? 'primary' : 'secondary'} onClick={() => setPanel(panel === 'lineup' ? null : 'lineup')}>
@@ -290,7 +305,9 @@ export function SetPage({ setId }: { setId: number }) {
                 finished={ws.finished}
                 players={players}
                 pendingSubs={pendingSubs}
+                hasLibero={ws.set.libero_ids.length > 0}
                 onClearSubs={pendingSubsCleared}
+                onQueueSub={substitutionQueued}
               />
               {courtState && <CourtDiagram state={courtState} players={players} onPick={numberPicked} />}
               {courtState && !selected && (

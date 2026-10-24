@@ -15,7 +15,9 @@ export const postMatch = (draft: MatchDraftType) => request('/api/matches', matc
 export const removeMatch = (id: number) => requestVoid(`/api/matches/${id}`, { method: 'DELETE' })
 export const postSet = (matchId: number) => request(`/api/matches/${matchId}/sets`, workspaceSchema, { method: 'POST' })
 export const removeSet = (setId: number) => requestVoid(`/api/sets/${setId}`, { method: 'DELETE' })
-export const patchMatch = (id: number, patch: Partial<Omit<MatchDraftType, 'team_id'>>) =>
+export type MatchPatchType = Partial<Omit<MatchDraftType, 'team_id'>> & { archived?: boolean }
+
+export const patchMatch = (id: number, patch: MatchPatchType) =>
   request(`/api/matches/${id}`, matchSummarySchema, { method: 'PATCH', body: patch })
 export const fetchVenues = () => request('/api/venues', z.array(venueSchema))
 export const postVenue = (name: string) => request('/api/venues', venueSchema, { method: 'POST', body: { name } })

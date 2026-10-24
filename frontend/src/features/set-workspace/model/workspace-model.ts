@@ -6,6 +6,7 @@ import {
   deleteRally,
   fetchWorkspace,
   patchRally,
+  clearSet,
   patchSet,
   patchSuggestion,
   postAction,
@@ -65,6 +66,16 @@ export const updateSetFx = attach({
     return patchSet(ws.set.id, patch)
   }),
   mapParams: (patch: SetPatchType, ws) => ({ ws, patch }),
+})
+
+/** Removes all rallies of the set (a trial tagging); video, court and lineup stay */
+export const clearSetFx = attach({
+  source: workspaceStore,
+  effect: createEffect((ws: WorkspaceType | null) => {
+    if (!ws) throw new Error('Партия не загружена')
+    return clearSet(ws.set.id)
+  }),
+  mapParams: (_: void, ws) => ws,
 })
 
 export const updateRallyFx = createEffect(({ id, patch }: { id: number; patch: RallyDraftType }) => patchRally(id, patch))
@@ -204,6 +215,7 @@ export const undoFx = attach({
 const workspaceUpdated = [
   loadWorkspaceFx.doneData,
   updateSetFx.doneData,
+  clearSetFx.doneData,
   updateRallyFx.doneData,
   deleteRallyFx.doneData,
   deleteActionFx.doneData,
@@ -256,7 +268,7 @@ pendingSubsStore
 
 commandErrorStore
   .on(
-    [runCommandFx.failData, undoFx.failData, updateSetFx.failData, updateRallyFx.failData, deleteRallyFx.failData, deleteActionFx.failData, loadWorkspaceFx.failData],
+    [runCommandFx.failData, undoFx.failData, updateSetFx.failData, clearSetFx.failData, updateRallyFx.failData, deleteRallyFx.failData, deleteActionFx.failData, loadWorkspaceFx.failData],
     (_, e) => errorMessage(e),
   )
   .reset(runCommandFx.done, errorDismissed, workspaceClosed)

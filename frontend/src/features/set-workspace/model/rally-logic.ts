@@ -1,4 +1,4 @@
-import type { PlayerType, RallyStateType, RallyType, SkillType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
+import type { PlayerType, PositionType, RallyStateType, RallyType, SkillType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
 
 /** Lead-in so a clip starting at the mark still shows the serve toss. */
 export const START_LEAD_SECONDS = 1
@@ -40,8 +40,9 @@ export function resolvePlayer(
     return { ok: false, error: 'Сейчас подаёт соперник — укажите номер или проверьте счёт' }
   }
   if (skill === 'E') {
-    const setter = state?.on_court.map((id) => players.find((p) => p.id === id)).find((p) => p?.position === 'S')
-    if (setter) return { ok: true, playerId: setter.id }
+    // setter_zone follows the role in this set, so a sub playing setter is found too
+    const setterId = state?.setter_zone ? state.lineup[state.setter_zone - 1] : undefined
+    if (setterId !== undefined) return { ok: true, playerId: setterId }
   }
   return { ok: false, error: 'Укажите номер игрока, например 15a#' }
 }
@@ -54,6 +55,13 @@ export const COURT_ZONES: number[][] = [
 
 export function playerInZone(state: RallyStateType, zone: number): number | undefined {
   return state.on_court[zone - 1]
+}
+
+/** Role in this set: a sub may play the replaced player's role instead of his roster position. */
+export function roleInZone(state: RallyStateType, zone: number, player: PlayerType | undefined): PositionType | null {
+  if (!player) return null
+  if (player.position === 'L') return 'L'
+  return state.lineup_roles[zone - 1] ?? player.position
 }
 
 export function rallyDuration(rally: RallyType): number | null {

@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks'
 import type { MatchSummaryType } from '@/shared/api/schemas'
 import { formatDate } from '@/shared/lib/format'
 import { Button } from '@/shared/ui/button'
@@ -8,11 +9,35 @@ type Props = {
   teamName: string
   onOpen: (id: number) => void
   onDelete: (id: number) => void
+  onArchive: (id: number, archived: boolean) => void
 }
 
-export function MatchList({ matches, teamName, onOpen, onDelete }: Props) {
+export function MatchList({ matches, teamName, onOpen, onDelete, onArchive }: Props) {
+  const [showArchive, setShowArchive] = useState(false)
+  const current = matches.filter((m) => !m.archived)
+  const archived = matches.filter((m) => m.archived)
   if (matches.length === 0) return <EmptyState>Матчей пока нет — создайте первый выше.</EmptyState>
 
+  return (
+    <div class="flex flex-col gap-3">
+      <MatchRows matches={current} teamName={teamName} onOpen={onOpen} onDelete={onDelete} onArchive={onArchive} />
+      {archived.length > 0 && (
+        <div class="flex flex-col gap-1">
+          <button type="button" class="self-start text-xs text-zinc-500 hover:text-white" onClick={() => setShowArchive(!showArchive)}>
+            {showArchive ? '▾' : '▸'} Архив ({archived.length}) — не входит в статистику сезона
+          </button>
+          {showArchive && (
+            <div class="opacity-60">
+              <MatchRows matches={archived} teamName={teamName} onOpen={onOpen} onDelete={onDelete} onArchive={onArchive} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MatchRows({ matches, teamName, onOpen, onDelete, onArchive }: Props) {
   return (
     <ul class="flex flex-col divide-y divide-zinc-800">
       {matches.map((m) => {
@@ -37,6 +62,14 @@ export function MatchList({ matches, teamName, onOpen, onDelete }: Props) {
                 {m.sets_won}:{m.sets_lost}
               </span>
             </button>
+            <Button
+              size="sm"
+              variant="ghost"
+              title={m.archived ? 'Вернуть в статистику сезона' : 'В архив: разметка сохранится, но не войдёт в статистику сезона'}
+              onClick={() => onArchive(m.id, !m.archived)}
+            >
+              {m.archived ? 'вернуть' : 'в архив'}
+            </Button>
             <Button
               size="sm"
               variant="ghost"

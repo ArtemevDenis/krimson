@@ -40,7 +40,7 @@ def season_stats(
     session: Session = Depends(get_session),
 ) -> dict:
     get_or_404(session, Team, team_id)
-    query = select(Match).where(Match.team_id == team_id)
+    query = select(Match).where(Match.team_id == team_id, Match.archived == False)  # noqa: E712
     if date_from:
         query = query.where(Match.date >= date_from)
     if date_to:

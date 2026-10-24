@@ -1,6 +1,6 @@
 import type { PlayerType, RallyStateType } from '@/shared/api/schemas'
 import { POSITION_SHORT, shortName } from '@/shared/lib/volleyball'
-import { COURT_ZONES, playerInZone } from '../model/rally-logic'
+import { COURT_ZONES, playerInZone, roleInZone } from '../model/rally-logic'
 
 type Props = {
   state: RallyStateType
@@ -18,6 +18,7 @@ export function CourtDiagram({ state, players, onPick }: Props) {
           const p = id !== undefined ? players.get(id) : undefined
           const isLibero = p?.position === 'L'
           const isServer = state.server_id === id
+          const role = roleInZone(state, zone, p)
           return (
             <button
               key={zone}
@@ -32,7 +33,9 @@ export function CourtDiagram({ state, players, onPick }: Props) {
               {isServer && <span class="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-300" />}
               <span class="text-lg leading-tight font-bold tabular">{p?.number ?? '?'}</span>
               <span class="w-full truncate text-[11px] text-zinc-400">{shortName(p)}</span>
-              {p && <span class="text-[10px] text-zinc-500">{POSITION_SHORT[p.position]}</span>}
+              {role && (
+                <span class={`text-[10px] ${role !== p?.position ? 'text-sky-300' : 'text-zinc-500'}`}>{POSITION_SHORT[role]}</span>
+              )}
             </button>
           )
         })}

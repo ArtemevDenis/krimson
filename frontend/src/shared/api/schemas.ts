@@ -56,6 +56,7 @@ const gameSetBase = {
   number: z.number(),
   video_id: z.number().nullable(),
   lineup: z.array(z.number()),
+  lineup_roles: z.array(positionSchema).nullable().default(null),
   libero_ids: z.array(z.number()),
   we_serve_first: z.boolean(),
   verified: z.boolean(),
@@ -85,6 +86,7 @@ export const matchSchema = z.object({
   venue: z.string().nullable(),
   venue_id: z.number().nullable(),
   notes: z.string().nullable(),
+  archived: z.boolean().default(false),
 })
 
 export const matchSummarySchema = matchSchema.extend({
@@ -104,6 +106,9 @@ export const rallyStateSchema = z.object({
   server_id: z.number().nullable(),
   setter_zone: z.number().nullable(),
   libero_replaces: z.number().nullable(),
+  serve_subs: z.array(z.object({ in_id: z.number(), out_id: z.number(), due: z.enum(['serve_lost', 'front_row']).nullable() })),
+  libero_out: z.boolean(),
+  lineup_roles: z.array(positionSchema.nullable()),
 })
 export type RallyStateType = z.infer<typeof rallyStateSchema>
 
@@ -118,7 +123,15 @@ export const actionSchema = z.object({
 })
 export type ActionType = z.infer<typeof actionSchema>
 
-export const substitutionSchema = z.object({ out_id: z.number(), in_id: z.number() })
+/** serve — a sub comes in to serve and the starter is expected back; libero_* — the libero sits out / returns */
+export const substitutionKindSchema = z.enum(['regular', 'serve', 'libero_out', 'libero_in'])
+export const substitutionSchema = z.object({
+  out_id: z.number().nullable().default(null),
+  in_id: z.number().nullable().default(null),
+  kind: substitutionKindSchema.default('regular'),
+  // role the incoming player takes; null = the role of the player he replaces
+  role: positionSchema.nullable().default(null),
+})
 export type SubstitutionType = z.infer<typeof substitutionSchema>
 
 export const rallySchema = z.object({

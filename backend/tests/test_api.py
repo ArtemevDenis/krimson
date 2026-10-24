@@ -103,3 +103,63 @@ def test_calibration_and_suggestion_flow():
         sg = ws["suggestions"][0]
         ws = c.patch(f"/api/suggestions/{sg['id']}", json={"status": "rejected"}).json()
         assert ws["suggestions"] == []
+
+
+def test_serve_sub_and_libero_toggle_flow():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Subs"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={
+            "text": "1 Связ S\n2 Доиг1 OH\n3 Центр1 MB\n4 Диаг OPP\n5 Доиг2 OH\n6 Центр2 MB\n7 Либ L\n8 Запас OH",
+        }).json()
+        ids = {p["number"]: p["id"] for p in roster}
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        c.patch(f"/api/sets/{set_id}", json={
+            "lineup": [ids[n] for n in (6, 1, 2, 3, 4, 5)], "libero_ids": [ids[7]], "we_serve_first": True,
+        })
+        ws = c.post(f"/api/sets/{set_id}/rallies", json={
+            "winner": "them", "substitutions": [{"out_id": ids[6], "in_id": ids[8], "kind": "serve"}],
+        }).json()
+        assert ws["current"]["serve_subs"] == [{"in_id": ids[8], "out_id": ids[6], "due": "serve_lost"}]
+        assert ws["current"]["lineup_roles"][0] == "MB"
+        ws = c.post(f"/api/sets/{set_id}/rallies", json={"substitutions": [{"kind": "libero_out"}]}).json()
+        assert ws["rallies"][1]["state"]["on_court"][0] == ids[8]
+        assert c.post(f"/api/sets/{set_id}/rallies", json={"substitutions": [{"kind": "serve"}]}).status_code == 422
+
+
+def test_roles_are_assigned_per_set():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Roles"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={
+            "text": "1 А S\n2 Б OH\n3 В MB\n4 Г OPP\n5 Д OH\n6 Е OH\n7 Либ L",
+        }).json()
+        ids = {p["number"]: p["id"] for p in roster}
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        # roster says 6 is OH, but in this set he plays middle — the libero replaces him in zone 6
+        ws = c.patch(f"/api/sets/{set_id}", json={
+            "lineup": [ids[n] for n in (1, 2, 3, 4, 5, 6)], "lineup_roles": ["S", "OH", "MB", "OPP", "OH", "MB"],
+            "libero_ids": [ids[7]], "we_serve_first": True,
+        }).json()
+        assert ws["current"]["on_court"][5] == ids[7]
+        assert ws["set"]["lineup_roles"][5] == "MB"
+        assert c.patch(f"/api/sets/{set_id}", json={"lineup_roles": ["S"]}).status_code == 422
+
+
+def test_archived_match_is_left_out_of_season_and_set_can_be_cleared():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Archive"}).json()
+        p = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "15 Игрок OH"}).json()[0]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-03-28"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        ws = c.post(f"/api/sets/{set_id}/rallies", json={"winner": "us"}).json()
+        c.post(f"/api/rallies/{ws['rallies'][0]['id']}/actions", json={"player_id": p["id"], "skill": "A", "evaluation": "#"})
+        assert c.get(f"/api/stats/teams/{team['id']}").json()["matches"] == 1
+
+        assert c.patch(f"/api/matches/{match['id']}", json={"archived": True}).json()["archived"]
+        season = c.get(f"/api/stats/teams/{team['id']}").json()
+        assert season["matches"] == 0 and season["team"]["rallies"] == 0
+        assert [m["archived"] for m in c.get(f"/api/matches?team_id={team['id']}").json()] == [True]  # kept, not deleted
+
+        ws = c.post(f"/api/sets/{set_id}/clear").json()
+        assert ws["rallies"] == [] and ws["set"]["id"] == set_id

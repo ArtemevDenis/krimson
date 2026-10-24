@@ -35,7 +35,8 @@ def set_config(game_set: GameSet, players: list[Player]) -> rotation.SetConfig |
         lineup=list(game_set.lineup),
         libero_ids=list(game_set.libero_ids),
         we_serve_first=game_set.we_serve_first,
-        positions={p.id: p.position for p in players},
+        # the set's own role assignment wins over the roster position
+        positions={p.id: p.position for p in players} | dict(zip(game_set.lineup, game_set.lineup_roles or [])),
     )
 
 
@@ -46,7 +47,7 @@ def replay_set(game_set: GameSet, players: list[Player], rallies: list[tuple[Ral
     inputs = [
         rotation.RallyInput(
             winner=r.winner,  # type: ignore[arg-type]
-            substitutions=[rotation.Substitution(s["out_id"], s["in_id"]) for s in r.substitutions],
+            substitutions=[rotation.Substitution(s.get("out_id"), s.get("in_id"), s.get("kind", "regular"), s.get("role")) for s in r.substitutions],
         )
         for r, _ in rallies
     ]

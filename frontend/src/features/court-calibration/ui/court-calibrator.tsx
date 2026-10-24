@@ -117,7 +117,7 @@ export function CourtCalibrator({ videoId, captureFrame, onSeek, onChanged }: Pr
             {points.length < POINT_COUNT ? (
               <span>
                 Точка {points.length + 1}/{POINT_COUNT}: <b class="text-rose-300">{POINT_LABELS[points.length]}</b>
-                <span class="text-xs text-zinc-500"> (лево/право — как на экране)</span>
+                <span class="text-xs text-zinc-500"> («левый» — одна и та же боковая линия во всех трёх парах; при съёмке сбоку — любая из двух)</span>
               </span>
             ) : (
               <span class="text-emerald-300">Все точки на месте. Проверьте, что контур совпадает с линиями, и сохраните.</span>

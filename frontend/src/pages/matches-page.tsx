@@ -5,11 +5,13 @@ import {
   createMatchFx,
   createVenueFx,
   deleteMatchFx,
+  loadMatchesFx,
   loadVenuesFx,
   MatchForm,
   MatchList,
   matchesErrorStore,
   matchesStore,
+  updateMatchFx,
   venuesStore,
 } from '@/features/matches'
 import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
@@ -24,6 +26,10 @@ export function MatchesPage() {
   useEffect(() => {
     void loadVenuesFx()
   }, [])
+  // On every visit, not only on team change: the remembered team never "changes" on startup
+  useEffect(() => {
+    if (teamId !== null) void loadMatchesFx(teamId)
+  }, [teamId])
   const teamName = teams.find((t) => t.id === teamId)?.name ?? ''
 
   return (
@@ -41,7 +47,13 @@ export function MatchesPage() {
         />
       </Card>
       <Card title="Матчи">
-        <MatchList matches={matches} teamName={teamName} onOpen={(id) => navigate(`/matches/${id}`)} onDelete={(id) => void deleteMatchFx(id)} />
+        <MatchList
+          matches={matches}
+          teamName={teamName}
+          onOpen={(id) => navigate(`/matches/${id}`)}
+          onDelete={(id) => void deleteMatchFx(id)}
+          onArchive={(id, archived) => void updateMatchFx({ id, patch: { archived } })}
+        />
       </Card>
     </div>
   )

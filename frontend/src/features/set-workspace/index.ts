@@ -25,6 +25,7 @@ export {
   undoRequested,
   updateRallyFx,
   updateSetFx,
+  clearSetFx,
   workspaceClosed,
   workspaceOpened,
   workspaceStore,

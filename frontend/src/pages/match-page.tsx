@@ -79,7 +79,17 @@ export function MatchPage({ matchId }: { matchId: number }) {
             onCreate={createVenueFx}
           />
         </div>
-        <span class="ml-auto text-2xl font-bold tabular">
+        {match.archived && <span class="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">в архиве — не входит в сезон</span>}
+        <Button
+          size="sm"
+          variant="ghost"
+          class="ml-auto"
+          title={match.archived ? 'Вернуть в статистику сезона' : 'В архив: разметка сохранится, но не войдёт в статистику сезона'}
+          onClick={() => void updateMatchFx({ id: match.id, patch: { archived: !match.archived } })}
+        >
+          {match.archived ? 'Вернуть из архива' : 'В архив'}
+        </Button>
+        <span class="text-2xl font-bold tabular">
           <span class="text-rose-400">{match.sets_won}</span>:{match.sets_lost}
         </span>
       </div>

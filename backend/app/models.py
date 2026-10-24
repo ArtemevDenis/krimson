@@ -54,6 +54,8 @@ class Match(SQLModel, table=True):
     venue: str | None = None  # legacy free text, superseded by venue_id
     venue_id: int | None = Field(default=None, foreign_key="venue.id", ondelete="SET NULL")
     notes: str | None = None
+    # Kept with its tagging but left out of season stats (e.g. a trial tagging)
+    archived: bool = False
 
 
 class GameSet(SQLModel, table=True):
@@ -66,6 +68,8 @@ class GameSet(SQLModel, table=True):
     # player ids in zones 1..6 at the start of the set
     lineup: list[int] = Field(default_factory=list, sa_column=_json_list())
     libero_ids: list[int] = Field(default_factory=list, sa_column=_json_list())
+    # Role of each starter in this set (aligned with lineup); empty = roster positions
+    lineup_roles: list[str] | None = Field(default=None, sa_column=Column(JSON))
     we_serve_first: bool = True
     # Fully checked by the user: every rally and every touch of our team is tagged, so it can serve as
     # ground truth (anything untagged really didn't happen) for evaluating and training the analyzer

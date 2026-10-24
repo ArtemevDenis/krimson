@@ -1,7 +1,6 @@
-import { createEffect, createStore, sample } from 'effector'
+import { createEffect, createStore } from 'effector'
 import { errorMessage } from '@/shared/api/client'
 import type { MatchSummaryType, VenueType } from '@/shared/api/schemas'
-import { currentTeamIdStore } from '@/shared/model/team-model'
 import {
   fetchMatch,
   fetchMatches,
@@ -13,6 +12,7 @@ import {
   removeMatch,
   removeSet,
   type MatchDraftType,
+  type MatchPatchType,
 } from '../api/matches-api'
 
 export const loadMatchesFx = createEffect(fetchMatches)
@@ -31,9 +31,7 @@ export const deleteSetFx = createEffect(async ({ setId, matchId }: { setId: numb
 
 export const loadVenuesFx = createEffect(fetchVenues)
 export const createVenueFx = createEffect(postVenue)
-export const updateMatchFx = createEffect(({ id, patch }: { id: number; patch: Partial<Omit<MatchDraftType, 'team_id'>> }) =>
-  patchMatch(id, patch),
-)
+export const updateMatchFx = createEffect(({ id, patch }: { id: number; patch: MatchPatchType }) => patchMatch(id, patch))
 
 export const venuesStore = createStore<VenueType[]>([])
   .on(loadVenuesFx.doneData, (_, list) => list)
@@ -55,9 +53,3 @@ export const matchesErrorStore = createStore<string | null>(null)
     errorMessage(e),
   )
   .reset([loadMatchesFx.done, createMatchFx.done, loadMatchFx.done])
-
-sample({
-  clock: currentTeamIdStore,
-  filter: (id): id is number => id !== null,
-  target: loadMatchesFx,
-})

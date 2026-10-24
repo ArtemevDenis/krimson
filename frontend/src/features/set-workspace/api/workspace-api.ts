@@ -3,6 +3,7 @@ import {
   jobSchema,
   workspaceSchema,
   type EvaluationType,
+  type PositionType,
   type SideType,
   type SkillType,
   type SubstitutionType,
@@ -12,6 +13,7 @@ export type SetPatchType = {
   verified?: boolean
   video_id?: number | null
   lineup?: number[]
+  lineup_roles?: PositionType[]
   libero_ids?: number[]
   we_serve_first?: boolean
 }
@@ -33,6 +35,8 @@ export type ActionDraftType = {
 }
 
 export const fetchWorkspace = (setId: number) => request(`/api/sets/${setId}`, workspaceSchema)
+
+export const clearSet = (setId: number) => request(`/api/sets/${setId}/clear`, workspaceSchema, { method: 'POST' })
 
 export const patchSet = (setId: number, patch: SetPatchType) =>
   request(`/api/sets/${setId}`, workspaceSchema, { method: 'PATCH', body: patch })

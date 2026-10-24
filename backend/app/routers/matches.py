@@ -1,8 +1,9 @@
 import datetime as dt
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session, select
 
 from app.db import get_session
@@ -30,6 +31,7 @@ class MatchPatch(BaseModel):
     venue_id: int | None = None
     venue: str | None = None
     notes: str | None = None
+    archived: bool | None = None
 
 
 class SetPatch(BaseModel):
@@ -37,13 +39,22 @@ class SetPatch(BaseModel):
     number: int | None = None
     video_id: int | None = None
     lineup: list[int] | None = None
+    lineup_roles: list[Literal["S", "OH", "OPP", "MB"]] | None = Field(default=None, min_length=6, max_length=6)
     libero_ids: list[int] | None = None
     we_serve_first: bool | None = None
 
 
 class SubstitutionIn(BaseModel):
-    out_id: int
-    in_id: int
+    out_id: int | None = None
+    in_id: int | None = None
+    kind: Literal["regular", "serve", "libero_out", "libero_in"] = "regular"
+    role: Literal["S", "OH", "OPP", "MB"] | None = None
+
+    @model_validator(mode="after")
+    def _players_required(self) -> "SubstitutionIn":
+        if self.kind in ("regular", "serve") and (self.out_id is None or self.in_id is None):
+            raise ValueError("Для замены нужны оба игрока")
+        return self
 
 
 class RallyIn(BaseModel):
@@ -243,6 +254,22 @@ def update_set(set_id: int, body: SetPatch, session: Session = Depends(get_sessi
 def delete_set(set_id: int, session: Session = Depends(get_session)) -> None:
     session.delete(get_or_404(session, GameSet, set_id))
     session.commit()
+
+
+@router.post("/sets/{set_id}/clear")
+def clear_set(set_id: int, session: Session = Depends(get_session)) -> dict:
+    """Drops all rallies and actions but keeps the video, court calibration and lineup, so the set can be
+    tagged again; reviewed CV suggestions go back to the review queue."""
+    game_set = get_or_404(session, GameSet, set_id)
+    for rally in session.exec(select(Rally).where(Rally.set_id == set_id)):
+        session.delete(rally)
+    for sg in session.exec(select(Suggestion).where(Suggestion.set_id == set_id, Suggestion.status != "pending")):
+        sg.status = "pending"
+        session.add(sg)
+    game_set.verified, game_set.verified_at = False, None
+    session.add(game_set)
+    session.commit()
+    return workspace(session, set_id)
 
 
 @router.post("/sets/{set_id}/analyze")
