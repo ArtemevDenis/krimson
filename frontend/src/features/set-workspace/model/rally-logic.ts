@@ -57,10 +57,15 @@ export function playerInZone(state: RallyStateType, zone: number): number | unde
   return state.on_court[zone - 1]
 }
 
+/** The libero is whoever the set uses as libero, not necessarily an L in the roster. */
+export function isLiberoInZone(state: RallyStateType, zone: number): boolean {
+  return state.on_court[zone - 1] !== state.lineup[zone - 1]
+}
+
 /** Role in this set: a sub may play the replaced player's role instead of his roster position. */
 export function roleInZone(state: RallyStateType, zone: number, player: PlayerType | undefined): PositionType | null {
   if (!player) return null
-  if (player.position === 'L') return 'L'
+  if (isLiberoInZone(state, zone)) return 'L'
   return state.lineup_roles[zone - 1] ?? player.position
 }
 

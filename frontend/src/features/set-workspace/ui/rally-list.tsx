@@ -53,9 +53,7 @@ export function RallyList(props: Props) {
             <div class="flex items-center gap-2">
               <button type="button" class="flex flex-1 items-center gap-2 text-left" onClick={() => props.onSelect(r.id)}>
                 <span class="w-7 text-xs text-zinc-500 tabular">#{r.index + 1}</span>
-                <span class="w-12 font-semibold tabular">
-                  {r.state ? `${r.state.our_score}:${r.state.their_score}` : '—'}
-                </span>
+                <RallyScore rally={r} />
                 <span class="text-xs text-zinc-500 tabular">
                   {formatTime(r.start_time)}–{formatTime(r.end_time)}
                 </span>
@@ -142,5 +140,27 @@ export function RallyList(props: Props) {
         )
       })}
     </ol>
+  )
+}
+
+/** Score after a finished rally with the winner highlighted; an open rally shows the score it started at. */
+function RallyScore({ rally }: { rally: RallyType }) {
+  const state = rally.state
+  if (!state) return <span class="w-12 font-semibold tabular">—</span>
+  if (rally.winner === null) {
+    return (
+      <span class="w-12 font-semibold text-amber-300/80 tabular" title="Розыгрыш не завершён — счёт перед ним">
+        {state.our_score}:{state.their_score}
+      </span>
+    )
+  }
+  const ours = state.our_score + (rally.winner === 'us' ? 1 : 0)
+  const theirs = state.their_score + (rally.winner === 'them' ? 1 : 0)
+  return (
+    <span class="w-12 font-semibold tabular" title={rally.winner === 'us' ? 'Очко нам' : 'Очко сопернику'}>
+      <span class={rally.winner === 'us' ? 'text-rose-400' : 'text-zinc-500'}>{ours}</span>
+      <span class="text-zinc-600">:</span>
+      <span class={rally.winner === 'them' ? 'text-white' : 'text-zinc-500'}>{theirs}</span>
+    </span>
   )
 }

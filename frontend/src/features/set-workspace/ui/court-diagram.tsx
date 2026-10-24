@@ -1,6 +1,6 @@
 import type { PlayerType, RallyStateType } from '@/shared/api/schemas'
 import { POSITION_SHORT, shortName } from '@/shared/lib/volleyball'
-import { COURT_ZONES, playerInZone, roleInZone } from '../model/rally-logic'
+import { COURT_ZONES, isLiberoInZone, playerInZone, roleInZone } from '../model/rally-logic'
 
 type Props = {
   state: RallyStateType
@@ -16,7 +16,7 @@ export function CourtDiagram({ state, players, onPick }: Props) {
         {COURT_ZONES.flat().map((zone) => {
           const id = playerInZone(state, zone)
           const p = id !== undefined ? players.get(id) : undefined
-          const isLibero = p?.position === 'L'
+          const isLibero = isLiberoInZone(state, zone)
           const isServer = state.server_id === id
           const role = roleInZone(state, zone, p)
           return (
