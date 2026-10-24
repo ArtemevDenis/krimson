@@ -26,9 +26,18 @@ def _records_for_matches(session: Session, matches: list[Match], set_id: int | N
 @router.get("/matches/{match_id}")
 def match_stats(match_id: int, set_id: int | None = None, session: Session = Depends(get_session)) -> dict:
     match = get_or_404(session, Match, match_id)
+    players = team_players(session, match.team_id)
+    by_set = []
+    for game_set in session.exec(select(GameSet).where(GameSet.match_id == match.id).order_by(GameSet.number)):
+        computed = stats.compute(stat_records(session, game_set, players))
+        if computed["team"]["rallies"]:
+            by_set.append({"set_id": game_set.id, "number": game_set.number, "team": computed["team"], "summary": stats.summary(computed)})
+    computed = stats.compute(_records_for_matches(session, [match], set_id))
     return {
-        **stats.compute(_records_for_matches(session, [match], set_id)),
-        "roster": [p.model_dump() for p in team_players(session, match.team_id)],
+        **computed,
+        "summary": stats.summary(computed),
+        "by_set": by_set,
+        "roster": [p.model_dump() for p in players],
     }
 
 

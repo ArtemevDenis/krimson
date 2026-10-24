@@ -248,3 +248,29 @@ def test_ball_given_over_is_not_an_attack():
         s = next(x for x in c.get(f"/api/stats/matches/{match['id']}").json()["players"] if x["player_id"] == p["id"])
         assert s["over"] == {"total": 2, "point": 1, "error": 0}
         assert s["attack"]["total"] == 0 and s["points"] == 1
+
+
+def test_match_stats_compare_sets():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "BySet"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "1 А S\n2 Б OH\n3 В MB\n4 Г OPP\n5 Д OH\n6 Е MB"}).json()
+        ids = [p["id"] for p in roster]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        sets = []
+        for _ in range(2):
+            set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+            c.patch(f"/api/sets/{set_id}", json={"lineup": ids, "we_serve_first": True})
+            sets.append(set_id)
+        # set 1: ace, then a serve error; set 2: a kill
+        for set_id, codes in ((sets[0], [("S", "#"), ("S", "=")]), (sets[1], [("A", "#")])):
+            for i, (skill, ev) in enumerate(codes):
+                rally = c.post(f"/api/sets/{set_id}/rallies", json={}).json()["rallies"][i]["id"]
+                c.post(f"/api/rallies/{rally}/actions", json={"player_id": ids[1], "skill": skill, "evaluation": ev})
+
+        s = c.get(f"/api/stats/matches/{match['id']}").json()
+        assert [b["number"] for b in s["by_set"]] == [1, 2]
+        first, second = s["by_set"]
+        assert first["summary"]["aces"] == 1 and first["summary"]["serve_errors"] == 1
+        assert first["team"]["our_points"] == 1 and first["team"]["our_errors"] == 1
+        assert second["summary"]["kills"] == 1 and second["team"]["won"] == 1
+        assert s["summary"]["aces"] == 1 and s["summary"]["kills"] == 1 and s["team"]["rallies"] == 3

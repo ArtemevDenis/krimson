@@ -232,16 +232,48 @@ export const rotationStatsSchema = z.object({
 })
 export type RotationStatsType = z.infer<typeof rotationStatsSchema>
 
+const teamStatsSchema = z.object({
+  rallies: z.number(),
+  won: z.number(),
+  our_points: z.number().default(0),
+  our_errors: z.number().default(0),
+  opponent_errors: z.number(),
+  opponent_points: z.number(),
+  faults: z.number().default(0),
+})
+export type TeamStatsType = z.infer<typeof teamStatsSchema>
+
+const count = z.number().default(0)
+/** Team-level counts used to compare sets side by side */
+export const statsSummarySchema = z.object({
+  serve_total: count,
+  aces: count,
+  serve_errors: count,
+  reception_total: count,
+  reception_positive: count,
+  attack_total: count,
+  kills: count,
+  attack_errors: count,
+  attack_blocked: count,
+  block_points: count,
+  over_total: count,
+  over_errors: count,
+  sideout_won: count,
+  sideout_total: count,
+  break_won: count,
+  break_total: count,
+})
+export type StatsSummaryType = z.infer<typeof statsSummarySchema>
+
+export const setStatsSchema = z.object({ set_id: z.number(), number: z.number(), team: teamStatsSchema, summary: statsSummarySchema })
+export type SetStatsType = z.infer<typeof setStatsSchema>
+
 export const statsSchema = z.object({
-  team: z.object({
-    rallies: z.number(),
-    won: z.number(),
-    opponent_errors: z.number(),
-    opponent_points: z.number(),
-    faults: z.number().default(0),
-  }),
+  team: teamStatsSchema,
   players: z.array(playerStatsSchema),
   rotations: z.array(rotationStatsSchema),
+  summary: statsSummarySchema.optional(),
+  by_set: z.array(setStatsSchema).default([]),
   roster: z.array(playerSchema),
   matches: z.number().optional(),
 })

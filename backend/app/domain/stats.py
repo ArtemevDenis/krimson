@@ -95,7 +95,7 @@ class RotationStats:
 def compute(rallies: list[RallyRecord]) -> dict:
     players: dict[int, PlayerStats] = {}
     rotations: dict[int, RotationStats] = {}
-    team = {"rallies": 0, "won": 0, "opponent_errors": 0, "opponent_points": 0, "faults": 0}
+    team = {"rallies": 0, "won": 0, "our_points": 0, "our_errors": 0, "opponent_errors": 0, "opponent_points": 0, "faults": 0}
 
     def player(pid: int) -> PlayerStats:
         return players.setdefault(pid, PlayerStats(pid))
@@ -117,11 +117,14 @@ def compute(rallies: list[RallyRecord]) -> dict:
         won = rally.winner == "us"
         team["won"] += won
 
+        # Who decided the rally: our point / opponent error when won, our error / opponent point when lost
         last = rally.actions[-1] if rally.actions else None
-        if won and (last is None or last.evaluation != "#"):
-            team["opponent_errors"] += 1
-        if not won and (last is None or last.evaluation not in ("=", "/")):
-            team["opponent_points"] += 1
+        if won:
+            decided_by_us = last is not None and last.evaluation == "#"
+            team["our_points" if decided_by_us else "opponent_errors"] += 1
+        else:
+            decided_by_us = last is not None and last.evaluation in ("=", "/")
+            team["our_errors" if decided_by_us else "opponent_points"] += 1
 
         zone = rally.state.setter_zone
         if zone is not None:
@@ -137,4 +140,32 @@ def compute(rallies: list[RallyRecord]) -> dict:
         "team": team,
         "players": [p.to_dict() for p in players.values()],
         "rotations": [r.to_dict() for r in sorted(rotations.values(), key=lambda r: r.setter_zone)],
+    }
+
+
+def summary(computed: dict) -> dict:
+    """Team-level counts for comparing sets side by side; ratios are left to the UI."""
+    players = computed["players"]
+
+    def total(group: str, key: str) -> int:
+        return sum(p[group][key] for p in players)
+
+    rotations = computed["rotations"]
+    return {
+        "serve_total": total("serve", "total"),
+        "aces": total("serve", "ace"),
+        "serve_errors": total("serve", "error"),
+        "reception_total": total("reception", "total"),
+        "reception_positive": total("reception", "positive"),
+        "attack_total": total("attack", "total"),
+        "kills": total("attack", "kill"),
+        "attack_errors": total("attack", "error"),
+        "attack_blocked": total("attack", "blocked"),
+        "block_points": total("block", "point"),
+        "over_total": total("over", "total"),
+        "over_errors": total("over", "error"),
+        "sideout_won": sum(r["sideout_won"] for r in rotations),
+        "sideout_total": sum(r["sideout_total"] for r in rotations),
+        "break_won": sum(r["break_won"] for r in rotations),
+        "break_total": sum(r["break_total"] for r in rotations),
     }

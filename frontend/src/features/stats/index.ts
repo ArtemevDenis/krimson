@@ -1,4 +1,5 @@
 export { loadMatchStatsFx, loadSeasonStatsFx, matchStatsStore, seasonStatsStore, statsErrorStore, teamTotals } from './model/stats-model'
 export { PlayerStatsTable } from './ui/player-stats-table'
 export { RotationTable } from './ui/rotation-table'
+export { SetComparisonTable } from './ui/set-comparison-table'
 export { TeamSummary } from './ui/team-summary'

@@ -25,7 +25,16 @@ import {
   VenueSelect,
   venuesStore,
 } from '@/features/matches'
-import { loadMatchStatsFx, matchStatsStore, PlayerStatsTable, RotationTable, statsErrorStore, TeamSummary, teamTotals } from '@/features/stats'
+import {
+  loadMatchStatsFx,
+  matchStatsStore,
+  PlayerStatsTable,
+  RotationTable,
+  SetComparisonTable,
+  statsErrorStore,
+  TeamSummary,
+  teamTotals,
+} from '@/features/stats'
 import { formatDate } from '@/shared/lib/format'
 import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
 import { Button } from '@/shared/ui/button'
@@ -131,6 +140,11 @@ export function MatchPage({ matchId }: { matchId: number }) {
             </Select>
           </div>
           <TeamSummary team={stats.team} />
+          {statsSet === null && stats.summary && stats.by_set.length > 0 && (
+            <Card title="По партиям">
+              <SetComparisonTable sets={stats.by_set} match={{ team: stats.team, summary: stats.summary }} />
+            </Card>
+          )}
           <Card title="Игроки">
             <PlayerStatsTable rows={stats.players} totals={teamTotals(stats.players)} roster={stats.roster} />
           </Card>
