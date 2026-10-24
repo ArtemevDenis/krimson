@@ -1,6 +1,6 @@
 import { useUnit } from 'effector-react'
 import { useEffect, useState } from 'preact/hooks'
-import { deletePlayerFx, importRosterFx, RosterImport, RosterTable, rosterErrorStore, rosterStore, updatePlayerFx } from '@/features/roster'
+import { deletePlayerFx, importRosterFx, loadRosterFx, RosterImport, RosterTable, rosterErrorStore, rosterStore, updatePlayerFx } from '@/features/roster'
 import { createTeamFx, currentTeamIdStore, renameTeamFx, teamsStore } from '@/shared/model/team-model'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -13,6 +13,10 @@ export function TeamPage() {
   const [name, setName] = useState(team?.name ?? '')
 
   useEffect(() => setName(team?.name ?? ''), [team?.id, team?.name])
+  // On every visit, not only on team change: the remembered team never "changes" on startup
+  useEffect(() => {
+    if (teamId !== null) void loadRosterFx(teamId)
+  }, [teamId])
 
   if (teamId === null || !team) return null
 

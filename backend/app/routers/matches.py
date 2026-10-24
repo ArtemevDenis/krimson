@@ -211,7 +211,7 @@ def delete_match(match_id: int, session: Session = Depends(get_session)) -> None
 
 @router.post("/matches/{match_id}/sets")
 def create_set(match_id: int, session: Session = Depends(get_session)) -> dict:
-    """A new set inherits the previous set's lineup and libero as a starting point."""
+    """A new set inherits the previous set's lineup, roles and libero as a starting point."""
     get_or_404(session, Match, match_id)
     previous = session.exec(
         select(GameSet).where(GameSet.match_id == match_id).order_by(GameSet.number.desc())
@@ -220,6 +220,7 @@ def create_set(match_id: int, session: Session = Depends(get_session)) -> dict:
         match_id=match_id,
         number=(previous.number + 1) if previous else 1,
         lineup=list(previous.lineup) if previous else [],
+        lineup_roles=list(previous.lineup_roles) if previous and previous.lineup_roles else None,
         libero_ids=list(previous.libero_ids) if previous else [],
         we_serve_first=not previous.we_serve_first if previous else True,
     )

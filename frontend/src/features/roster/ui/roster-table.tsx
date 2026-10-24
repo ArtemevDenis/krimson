@@ -17,7 +17,9 @@ export function RosterTable({ players, onUpdate, onDelete }: Props) {
         <tr>
           <th class="w-16 py-1 font-normal">Номер</th>
           <th class="py-1 font-normal">Имя</th>
-          <th class="w-40 py-1 font-normal">Амплуа</th>
+          <th class="w-40 py-1 font-normal" title="В каждой партии его можно поменять в расстановке">
+            Основное амплуа
+          </th>
           <th class="w-24 py-1 font-normal">В составе</th>
           <th class="w-10" />
         </tr>

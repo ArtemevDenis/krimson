@@ -238,6 +238,7 @@ export function SetPage({ setId }: { setId: number }) {
               <LineupEditor
                 key={ws.set.lineup.join(',')}
                 set={ws.set}
+                previous={ws.previous_set}
                 players={ws.players}
                 pending={savingSet}
                 onSave={(patch) => {

@@ -5,8 +5,12 @@ import { Button } from '@/shared/ui/button'
 import { Field, Select } from '@/shared/ui/form'
 import { COURT_ZONES } from '../model/rally-logic'
 
+type LineupSourceType = Pick<GameSetType, 'lineup' | 'lineup_roles' | 'libero_ids' | 'we_serve_first'>
+
 type Props = {
   set: GameSetType
+  /** Lineup of the previous set, used while this one has none yet */
+  previous: LineupSourceType | null
   players: PlayerType[]
   pending: boolean
   onSave: (patch: { lineup: number[]; lineup_roles: RoleType[]; libero_ids: number[]; we_serve_first: boolean }) => void
@@ -20,16 +24,19 @@ function defaultRole(player: PlayerType | undefined): RoleType {
   return player && player.position !== 'L' ? player.position : 'OH'
 }
 
-export function LineupEditor({ set, players, pending, onSave }: Props) {
+export function LineupEditor({ set, previous, players, pending, onSave }: Props) {
   const active = players.filter((p) => p.is_active)
-  const [lineup, setLineup] = useState<(number | null)[]>(set.lineup.length === 6 ? set.lineup : [null, null, null, null, null, null])
+  const fromPrevious = set.lineup.length !== 6 && previous !== null
+  const source: LineupSourceType = fromPrevious ? previous : set
+  const [lineup, setLineup] = useState<(number | null)[]>(source.lineup.length === 6 ? source.lineup : [null, null, null, null, null, null])
   const [roles, setRoles] = useState<RoleType[]>(() =>
-    set.lineup_roles?.length === 6
-      ? (set.lineup_roles.map((r) => (r === 'L' ? 'OH' : r)) as RoleType[])
+    source.lineup_roles?.length === 6
+      ? (source.lineup_roles.map((r) => (r === 'L' ? 'OH' : r)) as RoleType[])
       : lineup.map((id) => defaultRole(players.find((p) => p.id === id))),
   )
-  const [libero, setLibero] = useState<number | null>(set.libero_ids[0] ?? active.find((p) => p.position === 'L')?.id ?? null)
-  const [serveFirst, setServeFirst] = useState(set.we_serve_first)
+  const [libero, setLibero] = useState<number | null>(source.libero_ids[0] ?? active.find((p) => p.position === 'L')?.id ?? null)
+  // The first serve alternates between sets
+  const [serveFirst, setServeFirst] = useState(fromPrevious ? !source.we_serve_first : set.we_serve_first)
 
   const complete = lineup.every((id) => id !== null) && new Set(lineup).size === 6
   const setters = roles.filter((r) => r === 'S').length
@@ -42,8 +49,8 @@ export function LineupEditor({ set, players, pending, onSave }: Props) {
   return (
     <div class="flex flex-col gap-4">
       <p class="text-xs text-zinc-400">
-        Стартовая расстановка нашей команды на эту партию. Зона 1 — подающий. Роль подставляется из состава, но в каждой партии её
-        можно поменять. Дальше приложение само ведёт переходы, подачу и замену либеро на центрального в задней линии.
+        Стартовая расстановка нашей команды на эту партию. Зона 1 — подающий. Амплуа подставляется основное (из состава), в этой
+        партии его можно поменять — следующая партия возьмёт его отсюда. Дальше приложение само ведёт переходы, подачу и замену либеро на центрального в задней линии.
       </p>
       <div class="flex flex-col gap-2">
         <div class="h-1 rounded bg-zinc-500" />
@@ -100,6 +107,7 @@ export function LineupEditor({ set, players, pending, onSave }: Props) {
           </Select>
         </Field>
       </div>
+      {fromPrevious && <p class="text-xs text-sky-300">Подставлено из партии {set.number - 1} — проверьте и сохраните.</p>}
       {!complete && <p class="text-xs text-amber-300">Нужно выбрать 6 разных игроков.</p>}
       {complete && setters !== 1 && (
         <p class="text-xs text-amber-300">Связующих в расстановке: {setters}. Расстановки P1–P6 считаются по одному связующему.</p>

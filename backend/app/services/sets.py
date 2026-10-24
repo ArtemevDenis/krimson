@@ -77,6 +77,13 @@ def workspace(session: Session, set_id: int) -> dict:
     video = session.get(Video, game_set.video_id) if game_set.video_id else None
     rallies = load_rallies(session, set_id)
     states, final = replay_set(game_set, players, rallies)
+    previous = None
+    if len(game_set.lineup) != 6:
+        previous = session.exec(
+            select(GameSet)
+            .where(GameSet.match_id == game_set.match_id, GameSet.number < game_set.number)
+            .order_by(GameSet.number.desc())
+        ).first()
 
     return {
         "set": game_set.model_dump(),
@@ -99,4 +106,8 @@ def workspace(session: Session, set_id: int) -> dict:
         ],
         "current": asdict(final) if final else None,
         "finished": rotation.is_set_finished(final.our_score, final.their_score, game_set.number) if final else False,
+        # Starting point for an empty lineup: sets are often created before the previous one is set up
+        "previous_set": previous.model_dump(include={"lineup", "lineup_roles", "libero_ids", "we_serve_first"})
+        if previous and len(previous.lineup) == 6
+        else None,
     }

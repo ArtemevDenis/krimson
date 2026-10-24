@@ -1,7 +1,6 @@
-import { createEffect, createStore, sample } from 'effector'
+import { createEffect, createStore } from 'effector'
 import { errorMessage } from '@/shared/api/client'
 import type { PlayerType } from '@/shared/api/schemas'
-import { currentTeamIdStore } from '@/shared/model/team-model'
 import { createPlayer, fetchPlayers, importPlayers, patchPlayer, removePlayer, type PlayerDraftType } from '../api/roster-api'
 
 export const loadRosterFx = createEffect(fetchPlayers)
@@ -27,12 +26,6 @@ export const rosterErrorStore = createStore<string | null>(null)
     errorMessage(e),
   )
   .reset([loadRosterFx.done, addPlayerFx.done, importRosterFx.done, updatePlayerFx.done])
-
-sample({
-  clock: currentTeamIdStore,
-  filter: (id): id is number => id !== null,
-  target: loadRosterFx,
-})
 
 export function sortRoster(players: PlayerType[]): PlayerType[] {
   return [...players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999) || a.name.localeCompare(b.name))

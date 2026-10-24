@@ -182,6 +182,7 @@ export const workspaceSchema = z.object({
   suggestions: z.array(suggestionSchema),
   current: rallyStateSchema.nullable(),
   finished: z.boolean(),
+  previous_set: gameSetSchema.pick({ lineup: true, lineup_roles: true, libero_ids: true, we_serve_first: true }).nullable().default(null),
 })
 export type WorkspaceType = z.infer<typeof workspaceSchema>
 

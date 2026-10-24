@@ -163,3 +163,22 @@ def test_archived_match_is_left_out_of_season_and_set_can_be_cleared():
 
         ws = c.post(f"/api/sets/{set_id}/clear").json()
         assert ws["rallies"] == [] and ws["set"]["id"] == set_id
+
+
+def test_next_set_takes_lineup_and_roles_from_previous():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Carry"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "1 А S\n2 Б OH\n3 В MB\n4 Г OPP\n5 Д OH\n6 Е OH"}).json()
+        ids = [p["id"] for p in roster]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        first = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        second = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]  # created before the first is set up
+        roles = ["S", "OH", "MB", "OPP", "OH", "MB"]
+        c.patch(f"/api/sets/{first}", json={"lineup": ids, "lineup_roles": roles, "we_serve_first": True})
+
+        ws = c.get(f"/api/sets/{second}").json()
+        assert ws["previous_set"]["lineup_roles"] == roles
+        c.patch(f"/api/sets/{second}", json={"lineup": ids, "lineup_roles": roles})
+        third = c.post(f"/api/matches/{match['id']}/sets").json()["set"]
+        assert third["lineup"] == ids and third["lineup_roles"] == roles
+        assert c.get(f"/api/sets/{first}").json()["previous_set"] is None
