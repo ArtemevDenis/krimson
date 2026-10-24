@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks'
 import type { PlayerType, RallyType, SuggestionType } from '@/shared/api/schemas'
 import { formatTime } from '@/shared/lib/format'
-import { EVALUATION_LABELS, EVALUATION_TONE, SKILL_LABELS, playerLabel } from '@/shared/lib/volleyball'
+import { EVALUATION_LABELS, EVALUATION_TONE, FAULT_LABELS, SKILL_LABELS, playerLabel } from '@/shared/lib/volleyball'
 import { EmptyState } from '@/shared/ui/feedback'
 import { formatActionCode } from '../model/code-parser'
 
@@ -103,9 +103,11 @@ export function RallyList(props: Props) {
                     <span
                       key={a.id}
                       class="group inline-flex items-center gap-1 rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-xs"
-                      title={`${playerLabel(player)} — ${SKILL_LABELS[a.skill]}: ${EVALUATION_LABELS[a.skill][a.evaluation]}`}
+                      title={`${player ? playerLabel(player) : 'Команда'} — ${SKILL_LABELS[a.skill]}: ${
+                        a.fault ? FAULT_LABELS[a.fault] : EVALUATION_LABELS[a.skill][a.evaluation]
+                      }`}
                     >
-                      <span class={EVALUATION_TONE[a.evaluation]}>{formatActionCode(player?.number, a.skill, a.evaluation)}</span>
+                      <span class={EVALUATION_TONE[a.evaluation]}>{formatActionCode(player?.number, a.skill, a.evaluation, a.fault)}</span>
                       {selected && (
                         <button type="button" class="text-zinc-500 hover:text-red-400" onClick={() => props.onDeleteAction(a.id)}>
                           ×

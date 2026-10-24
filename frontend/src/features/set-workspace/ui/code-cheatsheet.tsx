@@ -1,7 +1,8 @@
 import type { SkillType } from '@/shared/api/schemas'
-import { EVALUATION_LABELS, EVALUATION_TONE, EVALUATIONS, SKILL_LABELS, SKILLS } from '@/shared/lib/volleyball'
+import type { FaultType } from '@/shared/api/schemas'
+import { EVALUATION_LABELS, EVALUATION_TONE, EVALUATIONS, FAULT_CODES, FAULT_CODES_RU, FAULT_LABELS, SKILL_LABELS, SKILLS, TEAM_FAULTS } from '@/shared/lib/volleyball'
 
-const SKILL_KEYS: Record<SkillType, string> = { S: 's / ы', R: 'r / к', A: 'a / ф', B: 'b / и', D: 'd / в', E: 'e / у', F: 'f / а' }
+const SKILL_KEYS: Record<Exclude<SkillType, 'N'>, string> = { S: 's / ы', R: 'r / к', A: 'a / ф', B: 'b / и', D: 'd / в', E: 'e / у', F: 'f / а' }
 
 export function CodeCheatsheet() {
   return (
@@ -27,7 +28,7 @@ export function CodeCheatsheet() {
             {SKILLS.map((s) => (
               <tr key={s} class="border-t border-zinc-800 align-top">
                 <td class="py-1 pr-2 whitespace-nowrap">
-                  <span class="font-mono text-zinc-200">{SKILL_KEYS[s]}</span> {SKILL_LABELS[s]}
+                  <span class="font-mono text-zinc-200">{SKILL_KEYS[s as Exclude<SkillType, 'N'>]}</span> {SKILL_LABELS[s]}
                 </td>
                 {EVALUATIONS.map((e) => (
                   <td key={e} class="px-1 py-1 text-center text-[11px] leading-tight">
@@ -38,6 +39,29 @@ export function CodeCheatsheet() {
             ))}
           </tbody>
         </table>
+        <div>
+          <p>
+            <b>Нарушения</b> — <span class="font-mono text-zinc-200">v</span> (violation) или <span class="font-mono text-zinc-200">н</span>{' '}
+            + тип; очко сопернику и ошибка игрока, сам элемент оценивается как обычно: <code class="text-zinc-200">10e+ 10vn</code>{' '}
+            (или <code class="text-zinc-200">10нс</code>) — пас хороший, потом №10 коснулся сетки.
+          </p>
+          <ul class="mt-1 grid grid-cols-2 gap-x-4">
+            {(Object.keys(FAULT_LABELS) as FaultType[]).map((f) => (
+              <li key={f}>
+                <code class="text-zinc-200">
+                  {TEAM_FAULTS.includes(f) || f === 'foot' ? '' : '10'}v{FAULT_CODES[f]}
+                </code>
+                <span class="font-mono text-zinc-500">
+                  {' / '}
+                  {TEAM_FAULTS.includes(f) || f === 'foot' ? '' : '10'}н{FAULT_CODES_RU[f]}
+                </span>{' '}
+                {FAULT_LABELS[f]}
+                {TEAM_FAULTS.includes(f) && <span class="text-zinc-500"> (команда, без номера)</span>}
+                {f === 'foot' && <span class="text-zinc-500"> (без номера — подающий)</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
         <p>
           <code class="text-zinc-200">[</code> начало розыгрыша · <code class="text-zinc-200">]</code> конец ·{' '}
           <code class="text-zinc-200">+</code> очко нам · <code class="text-zinc-200">-</code> очко соперникам ·{' '}

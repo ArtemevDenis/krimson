@@ -46,6 +46,7 @@ export function teamTotals(players: PlayerStatsType[]): PlayerStatsType {
     block: { total: sum((p) => p.block.total), point: sum((p) => p.block.point), error: sum((p) => p.block.error) },
     dig: { total: sum((p) => p.dig.total), positive: sum((p) => p.dig.positive), error: sum((p) => p.dig.error) },
     set: { total: sum((p) => p.set.total), error: sum((p) => p.set.error) },
+    faults: { total: sum((p) => p.faults.total ?? 0) },
     raw: {},
   }
 }

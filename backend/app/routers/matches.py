@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from app.db import get_session
 from app.domain import rotation
-from app.domain.scouting import EVALUATIONS, SKILLS, terminal_winner
+from app.domain.scouting import EVALUATIONS, FAULT_SKILL, FAULTS, SERVE_FAULTS, SKILLS, terminal_winner
 from app.models import Action, GameSet, Match, Player, Rally, Suggestion, Team, Venue, Video
 from app.services import jobs
 from app.services.sets import get_or_404, load_rallies, replay_set, team_players, workspace
@@ -79,6 +79,7 @@ class ActionIn(BaseModel):
     player_id: int | None = None
     skill: str
     evaluation: str
+    fault: str | None = None
     video_time: float | None = None
     suggestion_id: int | None = None
 
@@ -87,6 +88,7 @@ class ActionPatch(BaseModel):
     player_id: int | None = None
     skill: str | None = None
     evaluation: str | None = None
+    fault: str | None = None
     video_time: float | None = None
 
 
@@ -125,11 +127,15 @@ def _match_summary(session: Session, match: Match) -> dict:
     }
 
 
-def _validate_skill(skill: str | None, evaluation: str | None) -> None:
+def _validate_skill(skill: str | None, evaluation: str | None, fault: str | None = None) -> None:
     if skill is not None and skill not in SKILLS:
         raise HTTPException(422, f"Неизвестный элемент {skill}")
     if evaluation is not None and evaluation not in EVALUATIONS:
         raise HTTPException(422, f"Неизвестная оценка {evaluation}")
+    if skill == FAULT_SKILL and (fault not in FAULTS or fault in SERVE_FAULTS or evaluation != "="):
+        raise HTTPException(422, "Нарушение: нужен тип нарушения и оценка «=»")
+    if fault is not None and skill != FAULT_SKILL and not (fault in SERVE_FAULTS and skill == "S" and evaluation == "="):
+        raise HTTPException(422, "Тип нарушения указывается только для нарушения (или заступа на подаче, S=)")
 
 
 def _validate_lineup(session: Session, game_set: GameSet, lineup: list[int] | None, liberos: list[int] | None) -> None:
@@ -332,7 +338,7 @@ def delete_rally(rally_id: int, session: Session = Depends(get_session)) -> dict
 @router.post("/rallies/{rally_id}/actions")
 def add_action(rally_id: int, body: ActionIn, session: Session = Depends(get_session)) -> dict:
     rally = get_or_404(session, Rally, rally_id)
-    _validate_skill(body.skill, body.evaluation)
+    _validate_skill(body.skill, body.evaluation, body.fault)
     last = session.exec(select(Action).where(Action.rally_id == rally_id).order_by(Action.order.desc())).first()
     action = Action(rally_id=rally_id, order=(last.order + 1) if last else 0, **body.model_dump())
     if body.suggestion_id is not None and (suggestion := session.get(Suggestion, body.suggestion_id)):
@@ -342,7 +348,8 @@ def add_action(rally_id: int, body: ActionIn, session: Session = Depends(get_ses
     session.add(action)
     if rally.winner is None and (winner := terminal_winner(body.skill, body.evaluation)):
         rally.winner = winner
-        if rally.end_time is None and body.video_time is not None:
+        # A code typed with the video rewound before the rally must not give it an end before its start
+        if rally.end_time is None and body.video_time is not None and body.video_time >= (rally.start_time or 0):
             rally.end_time = body.video_time + 1.5
         session.add(rally)
     session.commit()
@@ -353,9 +360,11 @@ def add_action(rally_id: int, body: ActionIn, session: Session = Depends(get_ses
 def update_action(action_id: int, body: ActionPatch, session: Session = Depends(get_session)) -> dict:
     action = get_or_404(session, Action, action_id)
     data = body.model_dump(exclude_unset=True)
-    _validate_skill(data.get("skill"), data.get("evaluation"))
     for k, v in data.items():
         setattr(action, k, v)
+    if action.skill not in (FAULT_SKILL, "S") or action.evaluation != "=":
+        action.fault = None
+    _validate_skill(action.skill, action.evaluation, action.fault)
     session.add(action)
     rally = get_or_404(session, Rally, action.rally_id)
     session.commit()

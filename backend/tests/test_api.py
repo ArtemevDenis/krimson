@@ -182,3 +182,48 @@ def test_next_set_takes_lineup_and_roles_from_previous():
         third = c.post(f"/api/matches/{match['id']}/sets").json()["set"]
         assert third["lineup"] == ids and third["lineup_roles"] == roles
         assert c.get(f"/api/sets/{first}").json()["previous_set"] is None
+
+
+def test_fault_loses_rally_and_counts_as_player_error():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Faults"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={
+            "text": "1 А S\n2 Б OH\n3 В MB\n4 Г OPP\n5 Д OH\n6 Е MB",
+        }).json()
+        ids = [p["id"] for p in roster]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        c.patch(f"/api/sets/{set_id}", json={"lineup": ids, "we_serve_first": False})
+        rally_id = c.post(f"/api/sets/{set_id}/rallies", json={}).json()["rallies"][0]["id"]
+        # good set, then the setter touches the net
+        c.post(f"/api/rallies/{rally_id}/actions", json={"player_id": ids[0], "skill": "E", "evaluation": "+"})
+        ws = c.post(f"/api/rallies/{rally_id}/actions", json={
+            "player_id": ids[0], "skill": "N", "evaluation": "=", "fault": "net",
+        }).json()
+        assert ws["rallies"][0]["winner"] == "them"
+        assert ws["rallies"][0]["actions"][1]["fault"] == "net"
+        # team fault without a player
+        rally2 = c.post(f"/api/sets/{set_id}/rallies", json={}).json()["rallies"][1]["id"]
+        c.post(f"/api/rallies/{rally2}/actions", json={"skill": "N", "evaluation": "=", "fault": "four"})
+
+        stats = c.get(f"/api/stats/matches/{match['id']}").json()
+        setter = next(p for p in stats["players"] if p["player_id"] == ids[0])
+        assert setter["faults"]["net"] == 1 and setter["errors"] == 1
+        assert setter["set"] == {"total": 1, "error": 0}
+        assert stats["team"]["faults"] == 2
+
+        assert c.post(f"/api/rallies/{rally_id}/actions", json={"skill": "N", "evaluation": "="}).status_code == 422
+        assert c.post(f"/api/rallies/{rally_id}/actions", json={"skill": "E", "evaluation": "+", "fault": "net"}).status_code == 422
+
+
+def test_serve_foot_fault_is_a_serve_error():
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Foot"}).json()
+        p = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "9 Подающий OH"}).json()[0]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-24"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        rally_id = c.post(f"/api/sets/{set_id}/rallies", json={}).json()["rallies"][0]["id"]
+        ws = c.post(f"/api/rallies/{rally_id}/actions", json={"player_id": p["id"], "skill": "S", "evaluation": "=", "fault": "foot"}).json()
+        assert ws["rallies"][0]["winner"] == "them"
+        assert c.post(f"/api/rallies/{rally_id}/actions", json={"skill": "N", "evaluation": "=", "fault": "foot"}).status_code == 422
+        assert c.post(f"/api/rallies/{rally_id}/actions", json={"skill": "S", "evaluation": "=", "fault": "net"}).status_code == 422

@@ -16,9 +16,10 @@ const GROUPS: { title: string; span: number }[] = [
   { title: 'Атака', span: 6 },
   { title: 'Блок', span: 1 },
   { title: 'Защита', span: 2 },
+  { title: '', span: 1 },
 ]
 
-const HEADERS = ['№', 'Игрок', 'Амп.', 'Очки', 'Ош.', 'Всего', 'Эйс', 'Ош.', 'Эфф.', 'Всего', '#', 'Ош.', 'Поз.%', 'Идеал%', 'Всего', 'Очко', 'Ош.', 'Блок', '%', 'Эфф.', 'Очки', 'Всего', 'Ош.']
+const HEADERS = ['№', 'Игрок', 'Амп.', 'Очки', 'Ош.', 'Всего', 'Эйс', 'Ош.', 'Эфф.', 'Всего', '#', 'Ош.', 'Поз.%', 'Идеал%', 'Всего', 'Очко', 'Ош.', 'Блок', '%', 'Эфф.', 'Очки', 'Всего', 'Ош.', 'Наруш.']
 
 function cells(s: PlayerStatsType): (string | number)[] {
   return [
@@ -42,6 +43,7 @@ function cells(s: PlayerStatsType): (string | number)[] {
     s.block.point,
     s.dig.total,
     s.dig.error,
+    s.faults.total ?? 0,
   ]
 }
 

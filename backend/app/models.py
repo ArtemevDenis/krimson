@@ -98,6 +98,7 @@ class Action(SQLModel, table=True):
     player_id: int | None = Field(default=None, foreign_key="player.id", ondelete="SET NULL")
     skill: str
     evaluation: str
+    fault: str | None = None  # kind of violation for skill N (see scouting.FAULTS)
     video_time: float | None = None
     # Training data: which CV suggestion this came from (skill may differ = a correction) and where the
     # player was on the frame; video_time is the exact touch moment when it came from a suggestion

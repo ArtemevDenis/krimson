@@ -63,7 +63,7 @@ def stat_records(session: Session, game_set: GameSet, players: list[Player]) -> 
         stats.RallyRecord(
             state=state,
             winner=rally.winner,  # type: ignore[arg-type]
-            actions=[stats.ActionRecord(a.player_id, a.skill, a.evaluation) for a in actions],
+            actions=[stats.ActionRecord(a.player_id, a.skill, a.evaluation, a.fault) for a in actions],
         )
         for state, (rally, actions) in zip(states, rallies)
     ]

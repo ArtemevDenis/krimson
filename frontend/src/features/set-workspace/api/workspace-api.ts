@@ -3,6 +3,7 @@ import {
   jobSchema,
   workspaceSchema,
   type EvaluationType,
+  type FaultType,
   type PositionType,
   type SideType,
   type SkillType,
@@ -30,6 +31,7 @@ export type ActionDraftType = {
   player_id: number | null
   skill: SkillType
   evaluation: EvaluationType
+  fault?: FaultType | null
   video_time: number | null
   suggestion_id?: number | null
 }

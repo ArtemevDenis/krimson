@@ -4,7 +4,7 @@ from typing import Literal
 
 from app.domain.rotation import Side
 
-Skill = Literal["S", "R", "A", "B", "D", "E", "F"]
+Skill = Literal["S", "R", "A", "B", "D", "E", "F", "N"]
 Evaluation = Literal["#", "+", "!", "-", "/", "="]
 
 SKILLS: dict[str, str] = {
@@ -15,7 +15,23 @@ SKILLS: dict[str, str] = {
     "D": "Защита",
     "E": "Передача",
     "F": "Свободный мяч",
+    "N": "Нарушение",
 }
+
+# N is not a ball touch: a rule violation that always loses the rally (evaluation "="), with its kind in Action.fault.
+# A foot fault on the serve is a serve error (S=) with fault "foot", so serve stats count it too.
+FAULT_SKILL = "N"
+SERVE_FAULTS = ("foot",)
+FAULTS: dict[str, str] = {
+    "foot": "заступ при подаче",
+    "net": "касание сетки",
+    "line": "заступ за центральную линию",
+    "double": "двойное касание",
+    "catch": "захват",
+    "four": "четыре касания",
+    "rotation": "переход / неверная расстановка",
+}
+TEAM_FAULTS = ("four", "rotation")  # not tied to a player
 
 EVALUATIONS: tuple[str, ...] = ("#", "+", "!", "-", "/", "=")
 
@@ -28,6 +44,7 @@ EVALUATION_LABELS: dict[str, dict[str, str]] = {
     "D": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "не поднял"},
     "E": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "ошибка"},
     "F": {"#": "идеально", "+": "хорошо", "!": "в игре", "-": "плохо", "/": "перебросил", "=": "ошибка"},
+    "N": {"=": "нарушение"},
 }
 
 POINT_SKILLS = ("S", "A", "B")

@@ -83,6 +83,11 @@ export function liveRally(ws: WorkspaceType, time: number): RallyType | null {
     (r) => r.winner === null && r.start_time !== null && r.end_time !== null && time >= r.start_time - 0.5 && time <= r.end_time + LIVE_TAIL_SECONDS,
   )
   if (around) return around
+  // A manual rally in progress is not necessarily the last one: rallies are kept in video order,
+  // so one started earlier in the video than already tagged ones sits before them
+  const started = ws.rallies.filter((r) => r.winner === null && r.end_time === null && (r.start_time ?? 0) <= time + 0.5)
+  const latest = started[started.length - 1]
+  if (latest) return latest
   const open = openRally(ws)
   return open && open.end_time === null ? open : null
 }

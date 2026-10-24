@@ -1,6 +1,7 @@
 import { attach, createEffect, createEvent, createStore, sample } from 'effector'
 import { errorMessage } from '@/shared/api/client'
-import type { EvaluationType, SkillType, SubstitutionType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
+import type { EvaluationType, FaultType, SkillType, SubstitutionType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
+import { faultSkill, TEAM_FAULTS } from '@/shared/lib/volleyball'
 import {
   deleteAction,
   deleteRally,
@@ -112,9 +113,13 @@ export const runCommandFx = attach({
     // The first action of the line consumes the active suggestion: its moment and skill
     let suggestion = initial.suggestions.find((sg) => sg.id === suggestionId) ?? null
     let consumed: SuggestionType | null = null
+    let createdId: number | null = null
+    /** A new rally may land before existing ones (rallies are kept in video order), so remember it by id */
     const createRally = async (draft: RallyDraftType) => {
+      const known = new Set(ws.rallies.map((r) => r.id))
       ws = await postRally(ws.set.id, { substitutions: subs, ...draft })
       subs = []
+      createdId = ws.rallies.find((r) => !known.has(r.id))?.id ?? null
     }
 
     // Validate every player reference before touching the server, so a typo doesn't leave half a line applied
@@ -122,13 +127,23 @@ export const runCommandFx = attach({
     for (const cmd of parsed.commands) {
       if (cmd.kind === 'quick' && !suggestion) throw new Error('Нет активной подсказки — укажите элемент, например 31r+')
       if (cmd.kind === 'reject' && !suggestion) throw new Error('Нет активной подсказки')
+      if (cmd.kind === 'fault') {
+        const isTeam = TEAM_FAULTS.includes(cmd.fault)
+        if (isTeam && cmd.number !== null) throw new Error('Четыре касания и переход — нарушения команды, без номера: v4, vr (н4, нп)')
+        if (isTeam) continue
+        if (cmd.number === null && cmd.fault !== 'foot') throw new Error('Укажите номер нарушившего игрока, например 10vn или 10нс')
+        // without a number the foot fault goes to the current server, like `s=`
+        const resolved = resolvePlayer(cmd.number, faultSkill(cmd.fault), stateForNewRally, ws.players)
+        if (!resolved.ok) throw new Error(resolved.error)
+        continue
+      }
       if (cmd.kind !== 'action' && cmd.kind !== 'quick') continue
       const skill = cmd.kind === 'quick' ? suggestion!.skill : cmd.skill
       const resolved = resolvePlayer(cmd.number, skill, stateForNewRally, ws.players)
       if (!resolved.ok) throw new Error(resolved.error)
     }
 
-    const addAction = async (number: number | null, skill: SkillType, evaluation: EvaluationType) => {
+    const addAction = async (number: number | null, skill: SkillType, evaluation: EvaluationType, fault: FaultType | null = null) => {
       const sg = suggestion
       suggestion = null
       const at = sg ? sg.time : time
@@ -136,15 +151,19 @@ export const runCommandFx = attach({
       if (!current) {
         const lead = skill === 'S' ? START_LEAD_SECONDS : IMPLICIT_START_LEAD_SECONDS
         await createRally({ start_time: Math.max(0, at - lead) })
-        current = sg ? (rallyAtTime(ws, at) ?? openRally(ws)) : target()
+        current = sg ? (rallyAtTime(ws, at) ?? openRally(ws)) : (target() ?? rallyById(ws, createdId))
+        createdId = null
       }
       if (!current) throw new Error('Не удалось создать розыгрыш')
-      const resolved = resolvePlayer(number, skill, current.state ?? ws.current, ws.players)
-      if (!resolved.ok) throw new Error(resolved.error)
+      // Team faults (four touches, rotation) belong to nobody
+      const isTeamFault = fault !== null && TEAM_FAULTS.includes(fault)
+      const resolved = isTeamFault ? null : resolvePlayer(number, skill, current.state ?? ws.current, ws.players)
+      if (resolved && !resolved.ok) throw new Error(resolved.error)
       ws = await postAction(current.id, {
-        player_id: resolved.playerId,
+        player_id: resolved?.ok ? resolved.playerId : null,
         skill,
         evaluation,
+        fault,
         video_time: at,
         suggestion_id: sg?.id ?? null,
       })
@@ -182,6 +201,9 @@ export const runCommandFx = attach({
           break
         case 'quick':
           await addAction(cmd.number, suggestion!.skill, cmd.evaluation)
+          break
+        case 'fault':
+          await addAction(cmd.number, faultSkill(cmd.fault), '=', cmd.fault)
           break
         case 'reject': {
           const sg = suggestion!

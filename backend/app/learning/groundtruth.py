@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app import config
 from app.cv import detection
 from app.cv.base import CalibrationInput
+from app.domain.scouting import FAULT_SKILL
 from app.models import Action, CourtCalibration, GameSet, Match, Rally, Suggestion, Team, Venue, Video
 
 
@@ -70,7 +71,10 @@ def load_verified(session: Session, venue_slug: str | None = None, team_slug: st
         for r in session.exec(select(Rally).where(Rally.set_id == game_set.id).order_by(Rally.index)):
             if r.start_time is None or r.end_time is None:
                 continue
-            acts = session.exec(select(Action).where(Action.rally_id == r.id).order_by(Action.order)).all()
+            # Violations (skill N) are not ball touches, so the analyzer can't and shouldn't detect them
+            acts = session.exec(
+                select(Action).where(Action.rally_id == r.id, Action.skill != FAULT_SKILL).order_by(Action.order)
+            ).all()
             rallies.append(GtRally(r.id, r.start_time, r.end_time, [
                 GtAction(a.id, a.video_time, a.skill, a.player_id, a.suggestion_id is not None, a.player_box) for a in acts
             ]))

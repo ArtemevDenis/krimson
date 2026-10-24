@@ -8,6 +8,7 @@ export function TeamSummary({ team, matches }: { team: StatsType['team']; matche
     ['Проиграно', team.rallies - team.won],
     ['Ошибки соперника', team.opponent_errors],
     ['Очки соперника своей игрой', team.opponent_points],
+    ['Наши нарушения', team.faults],
   ]
   return (
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">

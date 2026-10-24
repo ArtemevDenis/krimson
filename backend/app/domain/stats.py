@@ -2,7 +2,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from app.domain.rotation import RallyState, Side
-from app.domain.scouting import EVALUATIONS, SKILLS
+from app.domain.scouting import EVALUATIONS, FAULTS, SKILLS
 
 
 @dataclass(frozen=True)
@@ -10,6 +10,7 @@ class ActionRecord:
     player_id: int | None
     skill: str
     evaluation: str
+    fault: str | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class PlayerStats:
     player_id: int
     rallies_on_court: int = 0
     counts: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    faults: Counter = field(default_factory=Counter)
 
     def total(self, skill: str) -> int:
         return sum(self.counts[skill].values())
@@ -64,6 +66,7 @@ class PlayerStats:
             "block": {"total": self.total("B"), "point": block_pts, "error": self.n("B", "=", "/")},
             "dig": {"total": self.total("D"), "positive": self.n("D", "#", "+"), "error": self.n("D", "=")},
             "set": {"total": self.total("E"), "error": self.n("E", "=")},
+            "faults": {"total": sum(self.faults.values()), **{k: self.faults[k] for k in FAULTS}},
             "raw": {s: {e: self.counts[s][e] for e in EVALUATIONS} for s in SKILLS},
         }
 
@@ -89,7 +92,7 @@ class RotationStats:
 def compute(rallies: list[RallyRecord]) -> dict:
     players: dict[int, PlayerStats] = {}
     rotations: dict[int, RotationStats] = {}
-    team = {"rallies": 0, "won": 0, "opponent_errors": 0, "opponent_points": 0}
+    team = {"rallies": 0, "won": 0, "opponent_errors": 0, "opponent_points": 0, "faults": 0}
 
     def player(pid: int) -> PlayerStats:
         return players.setdefault(pid, PlayerStats(pid))
@@ -98,8 +101,12 @@ def compute(rallies: list[RallyRecord]) -> dict:
         for pid in rally.state.on_court:
             player(pid).rallies_on_court += 1
         for action in rally.actions:
+            if action.fault:
+                team["faults"] += 1
             if action.player_id is not None:
                 player(action.player_id).counts[action.skill][action.evaluation] += 1
+                if action.fault:
+                    player(action.player_id).faults[action.fault] += 1
 
         if rally.winner is None:
             continue
