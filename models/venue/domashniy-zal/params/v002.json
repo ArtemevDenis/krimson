@@ -1,0 +1,60 @@
+{
+  "created": "2026-10-25T11:33:16+00:00",
+  "params": {
+    "max_gap": 0.25,
+    "max_speed": 2.5,
+    "start_conf": 0.2,
+    "min_track_points": 4,
+    "min_track_extent": 0.05,
+    "merge_gap": 4.402,
+    "min_rally": 2.365,
+    "lead": 1.663,
+    "tail": 1.134,
+    "long_flight_extent": 0.149,
+    "long_flight_seconds": 0.589,
+    "touch_dedup": 0.6,
+    "turn_angle_deg": 42.759,
+    "min_turn_speed": 0.066,
+    "max_person_dist": 0.046,
+    "block_window": 0.672,
+    "whistle_start_db": 42.73,
+    "whistle_end_db": 41.096,
+    "whistle_min_seconds": 0.05,
+    "whistle_lead": 0.748,
+    "whistle_end_tail": 0.609,
+    "whistle_default_rally": 7.477,
+    "whistle_without_ball": false,
+    "ball_only_min_conf": 0.894
+  },
+  "metrics": {
+    "rallies_true": 125,
+    "rallies_found": 115,
+    "rallies_false": 14,
+    "rally_precision": 0.891,
+    "rally_recall": 0.92,
+    "rally_f1": 0.905,
+    "start_error_s": 0.655,
+    "end_error_s": 4.823,
+    "action_precision": 0.425,
+    "action_recall": 0.501,
+    "action_f1": 0.46
+  },
+  "baseline": {
+    "rallies_true": 125,
+    "rallies_found": 117,
+    "rallies_false": 30,
+    "rally_precision": 0.796,
+    "rally_recall": 0.936,
+    "rally_f1": 0.86,
+    "start_error_s": 0.26,
+    "end_error_s": 3.656,
+    "action_precision": 0.436,
+    "action_recall": 0.277,
+    "action_f1": 0.339
+  },
+  "sets": [
+    "ДРУЖИНА 24.10, партия 1 · Домашний зал",
+    "ДРУЖИНА 24.10, партия 2 · Домашний зал",
+    "ДРУЖИНА 24.10, партия 3 · Домашний зал"
+  ]
+}
