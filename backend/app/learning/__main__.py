@@ -4,6 +4,7 @@
     uv run python -m app.learning tune --scope venue/domashniy-zal
     uv run python -m app.learning ball-dataset --scope venue/domashniy-zal
     uv run python -m app.learning train-ball --scope venue/domashniy-zal [--data D:/datasets/ball] [--epochs 60]
+    uv run python -m app.learning activate --scope venue/domashniy-zal --kind ball --version v001
     uv run python -m app.learning players-dataset --scope team/krimson
     uv run python -m app.learning train-players --scope team/krimson [--data ...]
 
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from app.db import init_db
 from app.learning import tasks
+from app.modelstore import store
 
 COMMANDS = {
     "evaluate": tasks.run_evaluate,
@@ -25,6 +27,7 @@ COMMANDS = {
     "train-ball": tasks.run_train_ball,
     "players-dataset": tasks.run_players_dataset,
     "train-players": tasks.run_train_players,
+    "activate": None,  # handled below: no job, just the registry
 }
 
 
@@ -39,10 +42,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scope", default="general", help="general | venue/<слаг зала> | team/<слаг команды>")
     parser.add_argument("--data", type=Path, help="папка датасета для train-* (например, скопированная с другого устройства)")
     parser.add_argument("--epochs", type=int)
+    parser.add_argument("--kind", choices=["params", "ball", "players"], help="для activate: какая модель")
+    parser.add_argument("--version", help="для activate: версия (v001…)")
     args = parser.parse_args(argv)
+    if args.command == "activate":
+        if not args.kind or not args.version:
+            parser.error("activate: нужны --kind и --version")
+        store().set_active(args.scope, args.kind, args.version)
+        print(f"Активна {args.scope}/{args.kind} {args.version}")
+        return 0
     init_db()
     payload = {"scope": args.scope, "data": str(args.data) if args.data else None, "epochs": args.epochs}
-    result = COMMANDS[args.command](payload, _progress)
+    result = COMMANDS[args.command](payload, _progress)  # type: ignore[misc]
     print()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

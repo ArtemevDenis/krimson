@@ -124,3 +124,27 @@ def test_tuning_a_hall_leaves_other_halls_and_general_untouched(tmp_path):
         assert scopes["venue/domashniy-zal"]["verified_sets"] == 0
         summary = c.get("/api/learning/summary", params={"scope": "venue/domashniy-zal"}).json()
         assert summary["verified_sets"] == []
+
+
+def test_relocate_points_videos_to_new_folder(tmp_path):
+    from sqlmodel import Session
+
+    from app.db import engine, init_db
+    from app.models import Video
+    from app.relocate import relocate
+
+    init_db()
+    (tmp_path / "sub").mkdir()
+    moved = tmp_path / "sub" / "VID_RELOCATE_1.mp4"
+    moved.write_bytes(b"x")
+    with Session(engine) as s:
+        win = Video(original_path=r"D:\old\VID_RELOCATE_1.mp4", proxy_path="/nowhere/proxy.mp4")
+        mac = Video(original_path="/Users/me/krimson/video/VID_RELOCATE_2.mp4")
+        s.add(win)
+        s.add(mac)
+        s.commit()
+        results = {v.id: found for v, found in relocate(s, tmp_path)}
+        s.refresh(win)
+        s.refresh(mac)
+        assert win.original_path == str(moved.resolve()) and win.proxy_path is None
+        assert results[mac.id] is None and mac.original_path.endswith("VID_RELOCATE_2.mp4")
