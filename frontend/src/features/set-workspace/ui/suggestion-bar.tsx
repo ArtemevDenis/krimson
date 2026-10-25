@@ -8,10 +8,13 @@ type Props = {
   active: SuggestionType | null
   onNext: () => void
   onReplay: () => void
+  onFreeze: () => void
   onClose: () => void
+  boxRejected: boolean
+  onToggleBox: () => void
 }
 
-export function SuggestionBar({ pendingCount, active, onNext, onReplay, onClose }: Props) {
+export function SuggestionBar({ pendingCount, active, onNext, onReplay, onFreeze, onClose, boxRejected, onToggleBox }: Props) {
   if (pendingCount === 0) return null
   if (!active) {
     return (
@@ -38,14 +41,29 @@ export function SuggestionBar({ pendingCount, active, onNext, onReplay, onClose 
         Enter — пропустить
       </span>
       <span class="ml-auto flex gap-1">
-        <Button size="sm" variant="ghost" onClick={onReplay}>
+        {active.player_box && (
+          <Button
+            size="sm"
+            variant={boxRejected ? 'primary' : 'ghost'}
+            onClick={onToggleBox}
+            title="Голубая рамка не на том, кто касался: действие сохранится без рамки и не пойдёт в обучение узнавания игроков (клавиша ё)"
+          >
+            {boxRejected ? '✓ без рамки' : 'рамка не та (ё)'}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={onFreeze} title="Встать на кадр касания — рассмотреть игрока">
+          ⏸ касание
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onReplay} title="Ещё раз: 2 с до касания, пауза на нём и до следующего касания">
           ↻ ещё раз
         </Button>
         <Button size="sm" variant="ghost" onClick={onClose}>
           ×
         </Button>
       </span>
-      <span class="w-full text-sky-400">осталось {pendingCount}</span>
+      <span class="w-full text-sky-400">
+        осталось {pendingCount} · видео: 2 с до касания, пауза на нём, затем до следующего касания — оценивайте по тому, что было дальше
+      </span>
     </div>
   )
 }

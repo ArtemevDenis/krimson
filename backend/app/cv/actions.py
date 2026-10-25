@@ -112,15 +112,18 @@ def infer_actions(touches: list[PlacedTouch], p: AnalyzerParams = DEFAULT_PARAMS
         return []
     out: list[SuggestedAction] = []
 
-    def suggest(t: PlacedTouch, skill: str, conf: float) -> None:
-        out.append(SuggestedAction(t.t, skill, round(conf * (1.0 if t.side else 0.6), 2), t.ball, t.player_box))
+    def suggest(t: PlacedTouch, skill: str, conf: float, with_box: bool = True) -> None:
+        box = t.player_box if with_box else None
+        out.append(SuggestedAction(t.t, skill, round(conf * (1.0 if t.side else 0.6), 2), t.ball, box))
 
     groups = _possessions(touches[touches.index(known[0]):])
     serve_group = groups[0]
     server = serve_group[0]
     behind_baseline = server.court_y is not None and (server.court_y < 0.5 or server.court_y > COURT_LENGTH - 0.5)
     if server.side == "us":
-        suggest(server, "S", 0.8 if behind_baseline else 0.5)
+        # The server is often outside the frame: then the nearest person is a teammate on the court, and his box
+        # under the server's number would teach the player classifier the wrong person
+        suggest(server, "S", 0.8 if behind_baseline else 0.5, with_box=behind_baseline)
     prev_last: PlacedTouch = server
     prev_was_serve = True
 

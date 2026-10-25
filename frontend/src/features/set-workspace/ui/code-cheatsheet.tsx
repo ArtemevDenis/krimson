@@ -65,7 +65,7 @@ export function CodeCheatsheet() {
         <p>
           <code class="text-zinc-200">[</code> начало розыгрыша · <code class="text-zinc-200">]</code> конец ·{' '}
           <code class="text-zinc-200">+</code> очко нам · <code class="text-zinc-200">-</code> очко соперникам ·{' '}
-          <code class="text-zinc-200">*</code> в избранное · Backspace в пустой строке — отменить последнее · Esc — выйти из
+          <code class="text-zinc-200">*</code> в избранное · <code class="text-zinc-200">ё</code> (<code>`</code>) с подсказкой — рамка не на том игроке · Backspace в пустой строке — отменить последнее · Esc — выйти из
           редактирования. Очки с кодами <code>#</code> на подаче/атаке/переводе/блоке и любые <code>=</code> закрывают розыгрыш сами.
         </p>
       </div>

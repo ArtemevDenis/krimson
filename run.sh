@@ -3,4 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 (cd frontend && npm install --silent && npm run build)
-cd backend && uv sync --quiet && exec uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd backend && uv sync --extra cv --quiet && exec uv run uvicorn app.main:app --host 127.0.0.1 --port 8000

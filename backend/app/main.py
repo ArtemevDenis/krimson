@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app import config
 from app.db import init_db
 from app.learning import tasks as learning_tasks  # noqa: F401  registers learning jobs
-from app.routers import highlights, learning, matches, stats, teams, videos
+from app.routers import highlights, learning, marks, matches, stats, teams, videos
 from app.services import jobs, media
 from app.services import tasks  # noqa: F401  registers job handlers
 
@@ -24,7 +24,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Krimson", lifespan=lifespan)
-for router in (teams.router, videos.router, matches.router, stats.router, highlights.router, learning.router):
+for router in (teams.router, videos.router, matches.router, marks.router, stats.router, highlights.router, learning.router):
     app.include_router(router)
 
 

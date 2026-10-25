@@ -127,6 +127,33 @@ class CourtCalibration(SQLModel, table=True):
     points: list[list[float]] = Field(default_factory=list, sa_column=_json_list())
 
 
+class PlayerMark(SQLModel, table=True):
+    """The user's "this person is #N" on a video frame: ground truth for telling players apart."""
+
+    __tablename__ = "player_mark"
+
+    id: int | None = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="game_set.id", ondelete="CASCADE", index=True)
+    player_id: int = Field(foreign_key="player.id", ondelete="CASCADE", index=True)
+    time: float  # the detection frame the box comes from
+    # normalized x1, y1, x2, y2 of the detected person
+    box: list[float] = Field(default_factory=list, sa_column=_json_list())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class IgnoredPerson(SQLModel, table=True):
+    """The user's "not one of ours" on a video frame (referee, coach, bench, an opponent at the net): the person's
+    track gets no name and no more questions."""
+
+    __tablename__ = "ignored_person"
+
+    id: int | None = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="game_set.id", ondelete="CASCADE", index=True)
+    time: float
+    box: list[float] = Field(default_factory=list, sa_column=_json_list())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class Suggestion(SQLModel, table=True):
     """A CV-proposed action of our team waiting for the user's confirmation."""
 

@@ -1,9 +1,51 @@
 import { useUnit } from 'effector-react'
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
 import { CourtCalibrator } from '@/features/court-calibration'
 import {
+  addIgnoreFx,
+  addMarkFx,
+  firstUnmarked,
+  loadMarksFx,
+  PASS_SERVE_OFFSET_SECONDS,
+  passConfirmFx,
+  passStarted,
+  passStepped,
+  passStore,
+  predictedNames,
+  askedTracksStore,
+  autoStopStore,
+  autoStopChanged,
+  deleteIgnoreFx,
+  deleteMarkFx,
+  ignoredStore,
+  personAsked,
+  personToAsk,
+  resumeAfterStore,
+  framePersonsStore,
+  frameRequested,
+  markedPersons,
+  markingClosed,
+  markingOpened,
+  markingSetStore,
+  marksErrorStore,
+  marksStore,
+  peopleAt,
+  peopleErrorStore,
+  PeopleOverlay,
+  peopleSetStore,
+  peopleShownToggled,
+  peopleTimeChanged,
+  peopleWindowStore,
+  personSelected,
+  PlayerMarksOverlay,
+  PlayerPicker,
+  selectedPersonStore,
+} from '@/features/player-marks'
+import {
   activeSuggestionIdStore,
+  boxRejectedStore,
+  boxRejectToggled,
   CodeCheatsheet,
   CodeInput,
   commandErrorStore,
@@ -41,6 +83,7 @@ import {
   updateRallyFx,
   updateSetFx,
   clearSetFx,
+  useVideoTime,
   VideoPlayer,
   videoHotkey,
   workspaceClosed,
@@ -52,6 +95,8 @@ import { watchJob } from '@/shared/api/jobs-api'
 import { currentTeamIdStore, teamsStore } from '@/shared/model/team-model'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { ErrorBanner } from '@/shared/ui/feedback'
+import { Select } from '@/shared/ui/form'
 
 export function SetPage({ setId }: { setId: number }) {
   const [ws, selectedId, draft, error, pendingSubs, activeSuggestionId] = useUnit([
@@ -64,6 +109,25 @@ export function SetPage({ setId }: { setId: number }) {
   ])
   const [running, undoing, savingSet] = useUnit([runCommandFx.pending, undoFx.pending, updateSetFx.pending])
   const [teams, teamId] = useUnit([teamsStore, currentTeamIdStore])
+  const boxRejected = useUnit(boxRejectedStore)
+  const [markingSet, framePersons, marks, selectedPerson, marksError] = useUnit([
+    markingSetStore,
+    framePersonsStore,
+    marksStore,
+    selectedPersonStore,
+    marksErrorStore,
+  ])
+  const marking = markingSet === setId
+  const [peopleSet, peopleWindow, peopleError] = useUnit([peopleSetStore, peopleWindowStore, peopleErrorStore])
+  const [ignored, autoStop, askedTracks, resumeAfter] = useUnit([ignoredStore, autoStopStore, askedTracksStore, resumeAfterStore])
+  const pass = useUnit(passStore)
+  const passActive = pass !== null && pass.setId === setId
+  const [typed, setTyped] = useState('')
+  // Pass actions are computed further down (after the workspace is loaded); the key handler reads the latest ones
+  const passConfirmRef = useRef<() => void>(() => {})
+  const peopleShown = peopleSet === setId && !marking
+  const liveTime = useVideoTime(peopleShown)
+  const peopleFrame = peopleShown ? peopleAt(peopleWindow?.frames ?? [], liveTime) : null
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [panel, setPanel] = useState<'lineup' | 'video' | 'court' | null>(null)
@@ -73,8 +137,80 @@ export function SetPage({ setId }: { setId: number }) {
 
   useEffect(() => {
     workspaceOpened(setId)
-    return () => workspaceClosed()
+    return () => {
+      workspaceClosed()
+      markingClosed()
+    }
   }, [setId])
+
+  // Names over the video: keep the loaded window ahead of playback (checked twice a second)
+  const halfSecond = Math.floor(liveTime * 2)
+  useEffect(() => {
+    if (peopleShown) peopleTimeChanged(halfSecond / 2)
+  }, [peopleShown, halfSecond])
+
+  // Stop on someone on our half nobody has named, and ask who it is
+  useEffect(() => {
+    if (!peopleShown || !peopleFrame || !playerController.isPlaying()) return
+    const person = personToAsk(peopleFrame, askedTracks, autoStop)
+    if (!person) return
+    playerController.pause()
+    personAsked(person.track)
+    markingOpened({ setId, time: peopleFrame.t, box: person.box, resume: true })
+  }, [peopleShown, autoStop, peopleFrame?.t])
+
+  // Keys while marking: Enter confirms the pass step (or the typed number for the selected person),
+  // arrows step through the pass, digits type a player's number, Esc leaves. Captured before the code line sees them.
+  useEffect(() => {
+    if (!marking) return
+    const onKey = (e: KeyboardEvent) => {
+      let handled = true
+      if (/^[0-9]$/.test(e.key)) setTyped((t) => (t + e.key).slice(-2))
+      else if (e.key === 'Backspace') setTyped((t) => t.slice(0, -1))
+      else if (e.key === 'Enter') {
+        const player = typed ? ws?.players.find((p) => p.number === Number(typed)) : undefined
+        if (typed && selectedPerson && framePersons && player) {
+          void addMarkFx({ setId, time: framePersons.time, box: selectedPerson, playerId: player.id })
+        } else if (!typed && passActive) {
+          passConfirmRef.current()
+        }
+        setTyped('')
+      } else if (e.key === 'ArrowRight' && passActive && pass) passStepped(pass.index + 1)
+      else if (e.key === 'ArrowLeft' && passActive && pass) passStepped(pass.index - 1)
+      else if (e.key === 'Escape') markingClosed()
+      else handled = false
+      if (handled) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  })
+
+  // Players pass: each step stands on the serve frame of the rally
+  useEffect(() => {
+    if (passActive && pass) playerController.showFrame(pass.times[pass.index]!)
+    setTyped('')
+  }, [passActive, pass?.index])
+
+  // After answering such a stop, play on
+  useEffect(() => {
+    if (!resumeAfter) return
+    const resume = () => {
+      markingClosed()
+      playerController.play()
+    }
+    const subscriptions = [addMarkFx.done.watch(resume), addIgnoreFx.done.watch(resume)]
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe())
+  }, [resumeAfter])
+
+  // While marking players, a seek shows the people of the new frame
+  useEffect(() => {
+    if (!marking) return
+    const timer = setTimeout(() => frameRequested(time), 150)
+    return () => clearTimeout(timer)
+  }, [marking, time])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +232,30 @@ export function SetPage({ setId }: { setId: number }) {
   const configured = ws.set.lineup.length === 6
   const selected = ws.rallies.find((r) => r.id === selectedId) ?? null
   const courtState = selected?.state ?? ws.current
+  const personsOnFrame = markedPersons(framePersons, marks, ignored)
+  const selectedOnFrame = personsOnFrame.find((p) => selectedPerson && p.box.every((v, i) => v === selectedPerson[i]))
+  const selectedMark = selectedOnFrame?.mark ?? null
+  const selectedIgnored = selectedOnFrame?.ignored ?? null
+  const predicted = predictedNames(personsOnFrame, framePersons ? peopleAt(peopleWindow?.frames ?? [], framePersons.time, 0.3) : null)
+  // Predicted names worth confirming: no mark and not "not ours" yet
+  const toConfirm = personsOnFrame
+    .map((p, i) => ({ p, guess: predicted[i] }))
+    .filter(({ p, guess }) => guess && !p.mark && !p.ignored)
+    .map(({ p, guess }) => ({ time: framePersons?.time ?? 0, box: p.box, player_id: guess!.player_id }))
+  const rallyServeTimes = ws.rallies
+    .filter((r) => r.start_time !== null && r.end_time !== null)
+    .map((r) => (r.start_time as number) + PASS_SERVE_OFFSET_SECONDS)
+  const passConfirm = () => {
+    if (!pass) return
+    const last = pass.index >= pass.times.length - 1
+    void passConfirmFx({ setId, marks: toConfirm, next: last ? pass.index : pass.index + 1 }).then(() => last && markingClosed())
+  }
+  passConfirmRef.current = passConfirm
+  // Who could be on the frame: the lineup of the rally there (libero included), the rest of the roster after
+  const stateAtFrame = (framePersons && rallyAtTime(ws, framePersons.time)?.state) || ws.current
+  const onCourtIds = new Set([...(stateAtFrame?.on_court ?? []), ...(stateAtFrame?.lineup ?? []), ...ws.set.libero_ids])
+  const onCourtAtFrame = ws.players.filter((p) => onCourtIds.has(p.id))
+  const benchAtFrame = ws.players.filter((p) => p.is_active && !onCourtIds.has(p.id))
   const playing = rallyAtTime(ws, time)
   const showLineup = !configured || panel === 'lineup'
   const showVideoImport = !ws.video || panel === 'video'
@@ -185,6 +345,53 @@ export function SetPage({ setId }: { setId: number }) {
             </Button>
           )}
           {ws.video && (
+            <Button
+              size="sm"
+              variant={passActive ? 'primary' : 'secondary'}
+              disabled={rallyServeTimes.length === 0}
+              title="Розыгрыш за розыгрышем на кадре подачи: подтвердить номера (Enter) или исправить. Лучше до разметки действий"
+              onClick={() => {
+                if (passActive) {
+                  markingClosed()
+                  return
+                }
+                playerController.pause()
+                void loadMarksFx(setId).then((state) =>
+                  passStarted({ setId, times: rallyServeTimes, index: firstUnmarked(rallyServeTimes, state.marks) }),
+                )
+              }}
+            >
+              Проход по игрокам
+            </Button>
+          )}
+          {ws.video && (
+            <Button
+              size="sm"
+              variant={peopleSet === setId ? 'primary' : 'secondary'}
+              title="Номера над нашими игроками по ходу видео. Клик по рамке — исправить"
+              onClick={() => peopleShownToggled(setId)}
+            >
+              Номера
+            </Button>
+          )}
+          {ws.video && (
+            <Button
+              size="sm"
+              variant={marking ? 'primary' : 'secondary'}
+              title="Отметить игроков на кадре: кто есть кто. Нужно для узнавания игроков"
+              onClick={() => {
+                if (marking) {
+                  markingClosed()
+                } else {
+                  playerController.pause()
+                  markingOpened({ setId, time: playerController.time() })
+                }
+              }}
+            >
+              Игроки
+            </Button>
+          )}
+          {ws.video && (
             <Button size="sm" variant={panel === 'court' ? 'primary' : 'secondary'} onClick={() => setPanel(panel === 'court' ? null : 'court')}>
               Площадка{calibrated ? ' ✓' : ''}
             </Button>
@@ -260,7 +467,31 @@ export function SetPage({ setId }: { setId: number }) {
               src={`/api/videos/${ws.video.id}/stream`}
               onTime={setTime}
               onDuration={setDuration}
-              overlay={<SuggestionOverlay suggestion={activeSuggestion} />}
+              overlay={
+                marking ? (
+                  <PlayerMarksOverlay
+                    persons={personsOnFrame}
+                    predicted={predicted}
+                    selected={selectedPerson}
+                    players={players}
+                    onSelect={personSelected}
+                  />
+                ) : (
+                  <>
+                    {peopleShown && (
+                      <PeopleOverlay
+                        frame={peopleFrame}
+                        players={players}
+                        onCorrect={(box, t) => {
+                          playerController.showFrame(t)
+                          markingOpened({ setId, time: t, box })
+                        }}
+                      />
+                    )}
+                    <SuggestionOverlay suggestion={activeSuggestion} time={time} hideBox={boxRejected} />
+                  </>
+                )
+              }
             />
             <RallyTimeline
               rallies={ws.rallies}
@@ -270,13 +501,73 @@ export function SetPage({ setId }: { setId: number }) {
               onSeek={(t) => playerController.seek(t)}
               onSelect={selectRally}
             />
-            {configured && (
+            {peopleShown && peopleError && <ErrorBanner message={peopleError} />}
+            {peopleShown && (
+              <label class="flex items-center gap-2 self-start text-xs text-zinc-400">
+                Останавливаться:
+                <Select
+                  class="w-auto py-0.5 text-xs"
+                  value={autoStop}
+                  onChange={(e) => autoStopChanged(e.currentTarget.value as typeof autoStop)}
+                >
+                  <option value="unnamed">только без номера</option>
+                  <option value="doubtful">без номера и сомнительные</option>
+                  <option value="off">не останавливаться</option>
+                </Select>
+                <span class="text-zinc-600">красная «?» — без номера, жёлтая пунктирная — номер под вопросом</span>
+              </label>
+            )}
+            {peopleShown && peopleWindow && !peopleWindow.available && (
+              <p class="text-xs text-amber-300">Номера появятся, когда у видео будут детекции и размеченная площадка.</p>
+            )}
+            {marking && (
+              <>
+                <ErrorBanner message={marksError} />
+                <PlayerPicker
+                  frameTime={framePersons?.time ?? null}
+                  personCount={personsOnFrame.length}
+                  hasSelection={selectedPerson !== null}
+                  selectedMark={selectedMark}
+                  selectedIgnored={selectedIgnored}
+                  asking={resumeAfter}
+                  onIgnore={() => framePersons && selectedPerson && void addIgnoreFx({ setId, time: framePersons.time, box: selectedPerson })}
+                  onUnignore={(id) => void deleteIgnoreFx(id)}
+                  typed={typed}
+                  pass={
+                    passActive && pass
+                      ? {
+                          index: pass.index,
+                          count: pass.times.length,
+                          predictedCount: toConfirm.length,
+                          onConfirm: passConfirm,
+                          onSkip: () => passStepped(pass.index + 1),
+                          onBack: () => passStepped(pass.index - 1),
+                        }
+                      : null
+                  }
+                  onCourt={onCourtAtFrame}
+                  bench={benchAtFrame}
+                  marksTotal={marks.length}
+                  onPick={(playerId) =>
+                    framePersons &&
+                    selectedPerson &&
+                    void addMarkFx({ setId, time: framePersons.time, box: selectedPerson, playerId })
+                  }
+                  onUnmark={(id) => void deleteMarkFx(id)}
+                  onClose={markingClosed}
+                />
+              </>
+            )}
+            {configured && !marking && (
               <>
                 <SuggestionBar
                   pendingCount={ws.suggestions.length}
                   active={activeSuggestion}
                   onNext={nextSuggestionRequested}
                   onReplay={() => suggestionActivated(activeSuggestion)}
+                  onFreeze={() => activeSuggestion && playerController.showFrame(activeSuggestion.time)}
+                  boxRejected={boxRejected}
+                  onToggleBox={boxRejectToggled}
                   onClose={() => suggestionActivated(null)}
                 />
                 <CodeInput

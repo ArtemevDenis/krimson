@@ -78,6 +78,11 @@ describe('parseCommandLine', () => {
     expect(parseCommandLine('нп')).toMatchObject({ commands: [{ kind: 'fault', fault: 'rotation' }] })
   })
 
+  it('parses the wrong-box mark on both layouts', () => {
+    expect(parseCommandLine('31+ ё')).toEqual({ ok: true, commands: [{ kind: 'quick', number: 31, evaluation: '+' }, { kind: 'dropBox' }] })
+    expect(parseCommandLine('` 31+')).toMatchObject({ commands: [{ kind: 'dropBox' }, { kind: 'quick' }] })
+  })
+
   it('parses rally commands', () => {
     expect(parseCommandLine('х ъ + - *')).toEqual({
       ok: true,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { PlayerType, RallyStateType, RallyType, WorkspaceType } from '@/shared/api/schemas'
-import { liveRally, roleInZone } from './rally-logic'
+import type { PlayerType, RallyStateType, RallyType, SuggestionType, WorkspaceType } from '@/shared/api/schemas'
+import { liveRally, reviewWindow, roleInZone } from './rally-logic'
 
 const rally = (id: number, start: number | null, end: number | null, winner: 'us' | 'them' | null): RallyType =>
   ({ id, start_time: start, end_time: end, winner }) as RallyType
@@ -29,5 +29,28 @@ describe('roleInZone', () => {
     const oh = { id: 14, position: 'OH' } as PlayerType
     expect(roleInZone(state, 1, oh)).toBe('L')
     expect(roleInZone(state, 2, { id: 7, position: 'S' } as PlayerType)).toBe('S')
+  })
+})
+
+describe('reviewWindow', () => {
+  const sg = (id: number, time: number) => ({ id, time }) as SuggestionType
+  const withActions = (r: RallyType, times: number[]) => ({ ...r, actions: times.map((t) => ({ video_time: t })) }) as RallyType
+  const wsOf = (rallies: RallyType[], suggestions: SuggestionType[]) => ({ rallies, suggestions }) as WorkspaceType
+
+  it('plays from before the touch on to just after the next one', () => {
+    const ws = wsOf([withActions(rally(1, 100, 130, null), [])], [sg(1, 110), sg(2, 112.5)])
+    expect(reviewWindow(ws, sg(1, 110))).toEqual({ start: 108, touch: 110, end: 113.5 })
+  })
+
+  it('counts tagged actions as the next touch too', () => {
+    const ws = wsOf([withActions(rally(1, 100, 130, null), [111.2])], [sg(1, 110)])
+    expect(reviewWindow(ws, sg(1, 110)).end).toBeCloseTo(112.2)
+  })
+
+  it('shows a few seconds after the last touch, within the rally', () => {
+    const ws = wsOf([withActions(rally(1, 100, 111.5, null), [])], [sg(1, 110)])
+    expect(reviewWindow(ws, sg(1, 110)).end).toBe(111.5)
+    const open = wsOf([withActions(rally(1, 100, 140, null), [])], [sg(1, 110)])
+    expect(reviewWindow(open, sg(1, 110)).end).toBe(113)
   })
 })

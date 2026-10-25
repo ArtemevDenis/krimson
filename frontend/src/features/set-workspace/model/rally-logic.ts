@@ -97,6 +97,29 @@ export function liveRally(ws: WorkspaceType, time: number): RallyType | null {
   return open && open.end_time === null ? open : null
 }
 
+/** Seconds of play shown before a suggested touch, and after the next touch (or after this one if it's the last). */
+export const REVIEW_BEFORE_SECONDS = 2
+export const REVIEW_AFTER_NEXT_SECONDS = 1
+export const REVIEW_AFTER_LAST_SECONDS = 3
+const REVIEW_MAX_AFTER_SECONDS = 6
+
+/**
+ * What to play when checking a suggestion: a touch is judged by its consequences (a reception by the set it allows,
+ * an attack by what the other side could do), so playback runs on to the next touch of the rally.
+ */
+export function reviewWindow(ws: WorkspaceType, sg: SuggestionType): { start: number; touch: number; end: number } {
+  const rally = rallyAtTime(ws, sg.time)
+  const later = [
+    ...ws.suggestions.map((s) => s.time),
+    ...(rally?.actions.map((a) => a.video_time).filter((t): t is number => t !== null) ?? []),
+  ].filter((t) => t > sg.time + 0.1 && (rally?.end_time == null || t <= rally.end_time))
+  const next = later.length ? Math.min(...later) : null
+  let end = next !== null ? next + REVIEW_AFTER_NEXT_SECONDS : sg.time + REVIEW_AFTER_LAST_SECONDS
+  end = Math.min(end, sg.time + REVIEW_MAX_AFTER_SECONDS)
+  if (rally?.end_time != null) end = Math.min(end, Math.max(rally.end_time, sg.time + 1))
+  return { start: Math.max(0, sg.time - REVIEW_BEFORE_SECONDS), touch: sg.time, end }
+}
+
 export function nextSuggestion(ws: WorkspaceType, after: number): SuggestionType | null {
   return ws.suggestions.find((s) => s.time > after + 0.05) ?? null
 }

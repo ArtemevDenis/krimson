@@ -120,6 +120,11 @@ def class_ids(names: dict[int, str]) -> tuple[int, int]:
 
 
 def run(video: Path, settings: DetectionSettings, progress: ProgressFn) -> Detections:
+    from app.cv.registry import CV_MISSING, cv_installed
+
+    if not cv_installed():
+        raise RuntimeError(f"Для этого видео ещё нет детекций, а посчитать их нечем. {CV_MISSING} "
+                           "или посчитайте детекции на Windows (precompute.ps1)")
     import cv2
     from ultralytics import YOLO
 

@@ -155,3 +155,11 @@ def test_without_whistles_ball_rallies_stay():
 
     ball = [RallySegment(1.0, 5.0, 0.5)]
     assert with_whistles(ball, []) == ball
+
+
+def test_serve_box_only_when_the_player_stands_behind_the_baseline():
+    behind = infer_actions([_touch(0, "us", -1), _touch(1.5, "them", 15)])
+    assert behind[0].skill == "S" and behind[0].player_box is not None
+    # server outside the frame: the nearest person is a teammate on the court — keep the serve, drop his box
+    on_court = infer_actions([_touch(0, "us", 4), _touch(1.5, "them", 15)])
+    assert on_court[0].skill == "S" and on_court[0].player_box is None

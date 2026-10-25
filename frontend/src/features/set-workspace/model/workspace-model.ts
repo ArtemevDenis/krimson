@@ -23,9 +23,10 @@ import {
   liveRally,
   nextSuggestion,
   openRally,
-  rallyById,
   rallyAtTime,
+  rallyById,
   resolvePlayer,
+  reviewWindow,
   START_LEAD_SECONDS,
 } from './rally-logic'
 
@@ -40,6 +41,8 @@ export const commandErrorStore = createStore<string | null>(null)
 export const pendingSubsStore = createStore<SubstitutionType[]>([])
 /** CV suggestion being reviewed: `31+` accepts it as player 31 with that evaluation, `x` rejects it */
 export const activeSuggestionIdStore = createStore<number | null>(null)
+/** The active suggestion's player box is on the wrong person: accept the action without it */
+export const boxRejectedStore = createStore(false)
 
 // --- events ------------------------------------------------------------------
 
@@ -55,6 +58,7 @@ export const pendingSubsCleared = createEvent()
 export const errorDismissed = createEvent()
 export const nextSuggestionRequested = createEvent()
 export const suggestionActivated = createEvent<SuggestionType | null>()
+export const boxRejectToggled = createEvent()
 
 // --- effects -----------------------------------------------------------------
 
@@ -89,6 +93,7 @@ type CommandContextType = {
   line: string
   pendingSubs: SubstitutionType[]
   suggestionId: number | null
+  boxRejected: boolean
 }
 
 /** Runs a whole command line sequentially; every API call returns the fresh workspace,
@@ -100,11 +105,13 @@ export const runCommandFx = attach({
     line: draftStore,
     pendingSubs: pendingSubsStore,
     suggestionId: activeSuggestionIdStore,
+    boxRejected: boxRejectedStore,
   },
-  effect: createEffect(async ({ ws: initial, selectedId, line, pendingSubs, suggestionId }: CommandContextType) => {
+  effect: createEffect(async ({ ws: initial, selectedId, line, pendingSubs, suggestionId, boxRejected }: CommandContextType) => {
     if (!initial) throw new Error('Партия не загружена')
     const parsed = parseCommandLine(line)
     if (!parsed.ok) throw new Error(parsed.error)
+    const dropBox = boxRejected || parsed.commands.some((c) => c.kind === 'dropBox')
 
     let ws = initial
     let subs = pendingSubs
@@ -166,6 +173,7 @@ export const runCommandFx = attach({
         fault,
         video_time: at,
         suggestion_id: sg?.id ?? null,
+        ...(sg && dropBox ? { drop_box: true } : {}),
       })
       if (sg) consumed = sg
     }
@@ -204,6 +212,8 @@ export const runCommandFx = attach({
           break
         case 'fault':
           await addAction(cmd.number, faultSkill(cmd.fault), '=', cmd.fault)
+          break
+        case 'dropBox':
           break
         case 'reject': {
           const sg = suggestion!
@@ -306,11 +316,18 @@ sample({
 // --- CV suggestions review ---------------------------------------------------
 
 /** Plays up to the touch and stops on it, so the frame matches the ball/player highlight. */
-const playSuggestionFx = createEffect((sg: SuggestionType | null) => {
-  if (sg) playerController.playSegment(Math.max(0, sg.time - 1.5), sg.time)
+const playSuggestionFx = attach({
+  source: workspaceStore,
+  effect: createEffect(({ ws, sg }: { ws: WorkspaceType | null; sg: SuggestionType | null }) => {
+    if (!sg || !ws) return
+    const { start, touch, end } = reviewWindow(ws, sg)
+    playerController.playReview(start, touch, end)
+  }),
+  mapParams: (sg: SuggestionType | null, ws) => ({ ws, sg }),
 })
 
 activeSuggestionIdStore.on(suggestionActivated, (_, sg) => sg?.id ?? null).reset(workspaceClosed)
+boxRejectedStore.on(boxRejectToggled, (rejected) => !rejected).reset(suggestionActivated, workspaceClosed, runCommandFx.done)
 
 // With a trained player classifier the number is already known: only the evaluation is left to type
 sample({

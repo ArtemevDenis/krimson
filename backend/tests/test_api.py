@@ -274,3 +274,83 @@ def test_match_stats_compare_sets():
         assert first["team"]["our_points"] == 1 and first["team"]["our_errors"] == 1
         assert second["summary"]["kills"] == 1 and second["team"]["won"] == 1
         assert s["summary"]["aces"] == 1 and s["summary"]["kills"] == 1 and s["team"]["rallies"] == 3
+
+
+def test_accepting_a_suggestion_can_drop_a_wrong_box():
+    from sqlmodel import Session
+
+    from app.db import engine
+    from app.models import Action, Suggestion
+
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Boxes"}).json()
+        p = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "9 Игрок OH"}).json()[0]
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-25"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        rally_id = c.post(f"/api/sets/{set_id}/rallies", json={}).json()["rallies"][0]["id"]
+        with Session(engine) as s:
+            ids = []
+            for t in (1.0, 2.0):
+                sg = Suggestion(set_id=set_id, time=t, skill="R", ball=[0.5, 0.5], player_box=[0.1, 0.1, 0.2, 0.4])
+                s.add(sg)
+                s.commit()
+                ids.append(sg.id)
+        c.post(f"/api/rallies/{rally_id}/actions", json={"player_id": p["id"], "skill": "R", "evaluation": "+", "suggestion_id": ids[0]})
+        c.post(f"/api/rallies/{rally_id}/actions", json={
+            "player_id": p["id"], "skill": "R", "evaluation": "+", "suggestion_id": ids[1], "drop_box": True,
+        })
+        with Session(engine) as s:
+            boxes = [a.player_box for a in s.query(Action).filter(Action.suggestion_id.in_(ids)).order_by(Action.suggestion_id)]
+        assert boxes == [[0.1, 0.1, 0.2, 0.4], None]
+
+
+def test_marking_players_on_a_frame(tmp_path):
+    import numpy as np
+    from sqlmodel import Session
+
+    from app.cv import detection
+    from app.db import engine
+    from app.models import Video
+
+    video_path = tmp_path / "VID_MARKS.mp4"
+    video_path.write_bytes(b"")
+    frames = [
+        detection.Frame(t, np.zeros((0, 4)), np.array([[0.1, 0.4, 0.2, 0.8, 0.9], [0.5, 0.4, 0.6, 0.8, 0.8]]))
+        for t in (0.0, 0.5, 1.0)
+    ]
+    detection.save(detection.Detections(detection.DetectionSettings(), frames), detection.sidecar_path(video_path))
+
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Marks"}).json()
+        roster = c.post(f"/api/teams/{team['id']}/players/import", json={"text": "7 А OH\n9 Б MB"}).json()
+        p7, p9 = (p["id"] for p in roster)
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-25"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        with Session(engine) as s:
+            v = Video(original_path=str(video_path), status="ready")
+            s.add(v)
+            s.commit()
+            vid = v.id
+        c.patch(f"/api/sets/{set_id}", json={"video_id": vid})
+
+        frame = c.get(f"/api/sets/{set_id}/persons", params={"time": 0.6}).json()
+        assert frame["time"] == 0.5 and len(frame["persons"]) == 2
+        left, right = (p["box"] for p in frame["persons"])
+
+        c.post(f"/api/sets/{set_id}/player-marks", json={"time": 0.5, "box": left, "player_id": p7})
+        marks = c.post(f"/api/sets/{set_id}/player-marks", json={"time": 0.5, "box": left, "player_id": p9}).json()["marks"]
+        assert [(m["player_id"], m["box"]) for m in marks] == [(p9, left)]  # same person re-marked
+        marks = c.post(f"/api/sets/{set_id}/player-marks", json={"time": 0.5, "box": right, "player_id": p9}).json()["marks"]
+        assert [(m["player_id"], m["box"]) for m in marks] == [(p9, right)]  # a player is one person per frame
+
+        # "not ours" replaces a mark on that person, and a mark replaces "not ours"
+        state = c.post(f"/api/sets/{set_id}/ignored", json={"time": 0.5, "box": right}).json()
+        assert state["marks"] == [] and [i["box"] for i in state["ignored"]] == [right]
+        state = c.post(f"/api/sets/{set_id}/player-marks", json={"time": 0.5, "box": right, "player_id": p7}).json()
+        assert state["ignored"] == [] and [m["player_id"] for m in state["marks"]] == [p7]
+        assert c.delete(f"/api/player-marks/{state['marks'][0]['id']}").json() == {"marks": [], "ignored": []}
+
+        both = c.post(f"/api/sets/{set_id}/player-marks/batch", json=[
+            {"time": 0.5, "box": left, "player_id": p7}, {"time": 0.5, "box": right, "player_id": p9},
+        ]).json()["marks"]
+        assert sorted((m["player_id"], m["box"] == left) for m in both) == sorted([(p7, True), (p9, False)])

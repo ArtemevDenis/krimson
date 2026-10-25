@@ -34,6 +34,7 @@ export type ActionDraftType = {
   fault?: FaultType | null
   video_time: number | null
   suggestion_id?: number | null
+  drop_box?: boolean
 }
 
 export const fetchWorkspace = (setId: number) => request(`/api/sets/${setId}`, workspaceSchema)

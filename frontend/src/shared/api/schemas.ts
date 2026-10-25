@@ -154,6 +154,46 @@ export const rallySchema = z.object({
 })
 export type RallyType = z.infer<typeof rallySchema>
 
+const boxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()])
+
+/** A person the detector found on a frame (normalized x1, y1, x2, y2) */
+export const framePersonsSchema = z.object({
+  time: z.number(),
+  persons: z.array(z.object({ box: boxSchema, conf: z.number() })),
+})
+export type FramePersonsType = z.infer<typeof framePersonsSchema>
+
+/** Our players as followed over the video: box, the name handed to them, and whether a user's mark backs it */
+export const peopleWindowSchema = z.object({
+  available: z.boolean(),
+  frames: z.array(
+    z.object({
+      t: z.number(),
+      // player_id null: someone on our half nobody has named yet
+      people: z.array(z.object({ track: z.number(), box: boxSchema, player_id: z.number().nullable(), confidence: z.number(), confirmed: z.boolean() })),
+    }),
+  ),
+})
+export type PeopleWindowType = z.infer<typeof peopleWindowSchema>
+export type PeopleFrameType = PeopleWindowType['frames'][number]
+
+/** The user's "this person is #N" on a frame */
+export const playerMarkSchema = z.object({
+  id: z.number(),
+  set_id: z.number(),
+  player_id: z.number(),
+  time: z.number(),
+  box: boxSchema,
+})
+export type PlayerMarkType = z.infer<typeof playerMarkSchema>
+
+/** The user's "not one of ours" (referee, coach, bench, an opponent at the net) on a frame */
+export const ignoredPersonSchema = z.object({ id: z.number(), set_id: z.number(), time: z.number(), box: boxSchema })
+export type IgnoredPersonType = z.infer<typeof ignoredPersonSchema>
+
+export const marksStateSchema = z.object({ marks: z.array(playerMarkSchema), ignored: z.array(ignoredPersonSchema) })
+export type MarksStateType = z.infer<typeof marksStateSchema>
+
 export const suggestionSchema = z.object({
   id: z.number(),
   set_id: z.number(),

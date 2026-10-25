@@ -11,6 +11,8 @@ export type CommandType =
   | { kind: 'quick'; number: number; evaluation: EvaluationType }
   /** `x`: reject the active suggestion */
   | { kind: 'reject' }
+  /** `` ` `` / `ё`: the suggestion's player box is on the wrong person — keep the action, drop the box */
+  | { kind: 'dropBox' }
   /** `10vn` / `10нс`: violation by #10 (net touch); team faults (`v4`, `vr`) have no number, `vf` defaults to the server */
   | { kind: 'fault'; number: number | null; fault: FaultType }
 
@@ -33,6 +35,7 @@ const RU_TO_LATIN: Record<string, string> = {
   // violations: v + type (n, c, d, h, f, 4, r) — к, в, а are already mapped above
   'п': 'g',
   'м': 'v',
+  'ё': '`',
   'т': 'n',
   'с': 'c',
   'р': 'h',
@@ -67,6 +70,8 @@ function parseToken(token: string): CommandType | null {
       return { kind: 'star' }
     case 'x':
       return { kind: 'reject' }
+    case '`':
+      return { kind: 'dropBox' }
   }
   const fault = FAULT_RE.exec(token)
   if (fault) return { kind: 'fault', number: fault[1] ? Number(fault[1]) : null, fault: FAULT_KEYS[fault[2]!]! }

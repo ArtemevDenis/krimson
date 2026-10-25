@@ -82,6 +82,8 @@ class ActionIn(BaseModel):
     fault: str | None = None
     video_time: float | None = None
     suggestion_id: int | None = None
+    # The suggestion's box was on the wrong person: keep the precise time, but not the box (training data)
+    drop_box: bool = False
 
 
 class ActionPatch(BaseModel):
@@ -340,10 +342,10 @@ def add_action(rally_id: int, body: ActionIn, session: Session = Depends(get_ses
     rally = get_or_404(session, Rally, rally_id)
     _validate_skill(body.skill, body.evaluation, body.fault)
     last = session.exec(select(Action).where(Action.rally_id == rally_id).order_by(Action.order.desc())).first()
-    action = Action(rally_id=rally_id, order=(last.order + 1) if last else 0, **body.model_dump())
+    action = Action(rally_id=rally_id, order=(last.order + 1) if last else 0, **body.model_dump(exclude={"drop_box"}))
     if body.suggestion_id is not None and (suggestion := session.get(Suggestion, body.suggestion_id)):
         suggestion.status = "accepted"
-        action.player_box = suggestion.player_box
+        action.player_box = None if body.drop_box else suggestion.player_box
         session.add(suggestion)
     session.add(action)
     if rally.winner is None and (winner := terminal_winner(body.skill, body.evaluation)):
