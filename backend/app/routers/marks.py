@@ -10,6 +10,8 @@ from sqlmodel import Session, select
 
 from app import config
 from app.cv import detection
+from app.cv.geometry import NET_Y
+from app.cv.people import NET_SIDE_MARGIN_M
 from app.db import get_session
 from app.models import GameSet, IgnoredPerson, Match, Player, PlayerMark, Video
 from app.services.sets import get_or_404
@@ -69,10 +71,10 @@ def persons_at(set_id: int, time: float, session: Session = Depends(get_session)
     video = session.get(Video, game_set.video_id) if game_set.video_id else None
     if video is None:
         raise HTTPException(422, "К партии не привязано видео")
-    found = detection.existing_sidecars(Path(video.original_path), config.DATA_DIR / "cv")
-    if not found:
-        raise HTTPException(404, "Для этого видео ещё нет детекций — запустите авторазметку или предрасчёт")
-    times, frames = _frames(str(found[0]), found[0].stat().st_mtime)
+    source = detection.persons_source(Path(video.original_path), config.DATA_DIR / "cv")
+    if source is None:
+        raise HTTPException(404, "Для этого видео ещё не найдены люди — этап «Люди» в обработке партии")
+    times, frames = _frames(str(source), source.stat().st_mtime)
     if not frames:
         return {"time": time, "persons": []}
     frame = frames[int(np.abs(times - time).argmin())]
@@ -151,6 +153,26 @@ OUR_AREA_X = (-0.5, 9.5)
 OUR_AREA_Y = (-3.0, 9.0)
 
 
+FILL_GAP_SECONDS = 0.5  # the detector losing someone for a few frames: carry the box over instead of blinking
+
+
+def _filled(tr) -> list[tuple[float, list[float], list[float]]]:
+    """The track's samples with short holes filled by linear interpolation, one sample per people slot."""
+    out = []
+    samples = list(zip(tr.t, tr.boxes, tr.court))
+    for (t0, b0, c0), (t1, b1, c1) in zip(samples, samples[1:]):
+        out.append((t0, b0, c0))
+        if PEOPLE_STEP_SECONDS < t1 - t0 <= FILL_GAP_SECONDS:
+            steps = int((t1 - t0) / PEOPLE_STEP_SECONDS)
+            for k in range(1, steps + 1):
+                a = k / (steps + 1)
+                out.append((t0 + (t1 - t0) * a, [round(u + (v - u) * a, 4) for u, v in zip(b0, b1)],
+                            [u + (v - u) * a for u, v in zip(c0, c1)]))
+    if samples:
+        out.append(samples[-1])
+    return out
+
+
 @router.get("/sets/{set_id}/people")
 def people_between(set_id: int, start: float, end: float, session: Session = Depends(get_session)) -> dict:
     """Our named players frame by frame in [start, end]: box, name, confidence, and whether the user's mark backs it."""
@@ -167,22 +189,28 @@ def people_between(set_id: int, start: float, end: float, session: Session = Dep
             continue
         if tr.id in found.identities.ignored:
             continue
-        last = -1.0
-        for t, box, (cx, cy) in zip(tr.t, tr.boxes, tr.court):
-            if t < start or t > end or t - last < PEOPLE_STEP_SECONDS:
+        # One sample per slot of a common grid: thinning each track from its own start would put tracks that began
+        # a frame apart into alternating slots, and the overlay (one slot at a time) would blink between them
+        taken: set[float] = set()
+        for t, box, (cx, cy) in _filled(tr):
+            if t < start or t > end:
                 continue
-            naming = found.identities.at(tr.id, t)
             slot = round(round(t / PEOPLE_STEP_SECONDS) * PEOPLE_STEP_SECONDS, 2)
+            if slot in taken:
+                continue
+            if cy > NET_Y + NET_SIDE_MARGIN_M:
+                continue  # on the opponent's half: never one of ours, whatever the track says
+            naming = found.identities.at(tr.id, t)
             if naming is None:
                 # Someone on our half nobody has named: the UI can stop and ask who it is
                 if OUR_AREA_X[0] <= cx <= OUR_AREA_X[1] and OUR_AREA_Y[0] <= cy <= OUR_AREA_Y[1]:
-                    last = t
+                    taken.add(slot)
                     by_time.setdefault(slot, []).append({
                         "track": tr.id, "box": box, "player_id": None, "confidence": 0.0, "confirmed": False,
                         "_rank": (False, False, -1.0),
                     })
                 continue
-            last = t
+            taken.add(slot)
             inside = naming.start - 1.0 <= t <= naming.end + 1.0
             by_time.setdefault(slot, []).append({
                 "track": tr.id, "box": box, "player_id": naming.player_id,
@@ -193,11 +221,15 @@ def people_between(set_id: int, start: float, end: float, session: Session = Dep
         # A name carried over from another rally may clash with the one handed out here: one person per name
         best: dict[int, dict] = {}
         unknown = []
-        for p in by_time[t]:
+        for p in sorted(by_time[t], key=lambda p: p["_rank"], reverse=True):
             if p["player_id"] is None:
                 unknown.append(p)
-            elif p["player_id"] not in best or p["_rank"] > best[p["player_id"]]["_rank"]:
+            elif p["player_id"] not in best:
                 best[p["player_id"]] = p
+            else:
+                # The name is taken by someone likelier (often a track that switched people and carries a mark made
+                # elsewhere): this one is still a person, just not known here — show it and ask
+                unknown.append({**p, "player_id": None, "confidence": 0.0})
         people = [*best.values(), *unknown]
         frames.append({"t": t, "people": [{k: v for k, v in p.items() if k != "_rank"} for p in people]})
     return {"available": True, "frames": frames}

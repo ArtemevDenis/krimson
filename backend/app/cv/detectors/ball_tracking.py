@@ -23,8 +23,9 @@ class BallTrackingAnalyzer:
         det = detection.load_or_run(
             video, detection_settings(profile), lambda p: progress(p * DETECTION_SHARE), cache_dir=config.DATA_DIR / "cv"
         )
+        frames = detection.with_persons(det.frames, detection.load_persons(video, config.DATA_DIR / "cv"))
         tones = audio.load_or_detect(video)
-        result = analyze_detections(det.frames, courts, profile.params, tones)
+        result = analyze_detections(frames, courts, profile.params, tones)
 
         players_weights = profile.players_weights()
         if players_weights is not None:

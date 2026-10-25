@@ -92,3 +92,6 @@ export function predictedNames(persons: MarkedPersonType[], frame: PeopleFrameTy
     return best ? { player_id: best.p.player_id as number, confidence: best.p.confidence } : null
   })
 }
+
+/** One step of the frame stepper in marking: about one frame of the people detection (7.5 fps) plus a bit */
+export const FRAME_STEP_SECONDS = 0.2

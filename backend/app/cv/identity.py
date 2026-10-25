@@ -82,6 +82,10 @@ class Identities:
     def at(self, track_id: int, t: float) -> Naming | None:
         """The name the track carries at `t`: from the rally around it, otherwise the nearest rally's (a player
         walking between rallies is still the same track, so he keeps his name)."""
+        if track_id in self.labels:
+            # The user's mark wins everywhere on its track (tracks are cut between marks of different players), even
+            # for a player the lineup doesn't list here — a substitution not entered yet
+            return Naming(track_id, self.labels[track_id], t, t, 1.0, True)
         own = [n for n in self.namings if n.track_id == track_id]
         if not own:
             return None
@@ -117,6 +121,46 @@ def track_of(tracks: list[PersonTrack], t: float, box: list[float]) -> PersonTra
         if overlap >= best_iou:
             best, best_iou = tr, overlap
     return best
+
+
+NOT_OURS = -1  # an "ignored" mark in split_on_marks: a piece that is nobody of ours
+
+
+def split_on_marks(
+    tracks: list[PersonTrack], marks: list[tuple[float, list[float], int]], ignored: list[tuple[float, list[float]]] = ()
+) -> list[PersonTrack]:
+    """A track carrying marks of two different players switched people somewhere between them (players crossing
+    in a huddle, a substitution, the libero swapping with a middle): cut it there, so each mark names only its own
+    piece. The cut goes at the longest gap between the two marks, which is where the switch most likely was."""
+    by_track: dict[int, list[tuple[float, int]]] = {}
+    for t, box, player in [*marks, *((t, box, NOT_OURS) for t, box in ignored)]:
+        tr = track_of(tracks, t, box)
+        if tr is not None:
+            by_track.setdefault(tr.id, []).append((t, player))
+    next_id = max((tr.id for tr in tracks), default=0) + 1
+    out: list[PersonTrack] = []
+    for tr in tracks:
+        own = sorted(by_track.get(tr.id, []))
+        cuts = []
+        for (t1, p1), (t2, p2) in zip(own, own[1:]):
+            if p1 == p2:
+                continue
+            idx = [i for i, t in enumerate(tr.t) if t1 < t <= t2]
+            if not idx:
+                continue
+            cut = max(idx, key=lambda i: tr.t[i] - tr.t[i - 1] + float(np.hypot(*(np.array(tr.court[i]) - np.array(tr.court[i - 1])))) * 0.2)
+            cuts.append(cut)
+        if not cuts:
+            out.append(tr)
+            continue
+        bounds = [0, *sorted(set(cuts)), len(tr.t)]
+        for k, (a, b) in enumerate(zip(bounds, bounds[1:])):
+            if b <= a:
+                continue
+            out.append(PersonTrack(tr.id if k == 0 else next_id, tr.t[a:b], tr.boxes[a:b], tr.court[a:b]))
+            if k:
+                next_id += 1
+    return out
 
 
 def _mark_labels(tracks: list[PersonTrack], marks: list[tuple[float, list[float], int]]) -> dict[int, int]:
@@ -156,14 +200,18 @@ def solve(
     from app.cv.geometry import court_at
 
     labels = _mark_labels(tracks, marks)
-    ignored_ids = {tr.id for t, box in ignored if (tr := track_of(tracks, t, box)) is not None} - set(labels)
+    ignored_ids = {tr.id for t, box in ignored if (tr := track_of(tracks, t, box)) is not None}
+    # After split_on_marks a track is either marked as ours or "not ours"; if both still meet on one track
+    # (no cut point found), the latest word wins
+    for tid in ignored_ids & set(labels):
+        del labels[tid]
     result = Identities(labels=labels, ignored=ignored_ids)
     previous: dict[int, int] = {}  # track id -> name in the previous rally
     for rally in rallies:
         names = rally.names()
         if len(names) < 6:
             continue
-        cands = _candidates(tracks, rally, ignored_ids, MAX_CANDIDATES if rally.ordered else MAX_CANDIDATES_UNORDERED)
+        cands = _candidates(tracks, rally, ignored_ids, MAX_CANDIDATES if rally.ordered else MAX_CANDIDATES_UNORDERED, labels)
         if not cands:
             continue
         chosen = _assignments(len(cands), len(names))  # (A, names): candidate index per name, NONE if unseen
@@ -198,12 +246,15 @@ def solve(
 
 
 def _candidates(
-    tracks: list[PersonTrack], rally: RallyContext, ignored_ids: set[int], limit: int
+    tracks: list[PersonTrack], rally: RallyContext, ignored_ids: set[int], limit: int, labels: dict[int, int]
 ) -> list[tuple[PersonTrack, np.ndarray]]:
+    names = set(rally.names())
     cands: list[tuple[PersonTrack, np.ndarray]] = []
     for tr in tracks:
         if tr.end < rally.start or tr.start > rally.end or tr.id in ignored_ids:
             continue
+        if tr.id in labels and labels[tr.id] not in names:
+            continue  # marked as someone the lineup doesn't list (an unentered substitution): named by the mark
         serve_pos = tr.position(rally.start + SERVE_WINDOW[0], rally.start + SERVE_WINDOW[1])
         pos = serve_pos if serve_pos is not None else tr.position(rally.start, rally.end)
         if pos is not None and _in_area(pos):

@@ -104,3 +104,48 @@ def test_without_the_rotation_the_squad_is_handed_out():
     first = tracks[0]
     marked = solve(tracks, [rally], [(1.0, first.boxes[15], 22)], [COURT])
     assert {n.track_id: n.player_id for n in marked.namings}[first.id] == 22
+
+
+def test_a_track_marked_as_two_players_is_cut_between_the_marks():
+    # One track that "becomes" another player halfway (a swap the tracker didn't notice)
+    tracks = link_people(_frames(10, [lambda t: (2.0 + 0.1 * t, 3.0)]), [COURT])
+    assert len(tracks) == 1
+    tr = tracks[0]
+    from app.cv.identity import split_on_marks
+
+    pieces = split_on_marks(tracks, [(1.0, tr.boxes[15], 11), (8.0, tr.boxes[120], 12)])
+    assert len(pieces) == 2
+    assert pieces[0].end < 8.0 <= pieces[1].end and pieces[1].start > 1.0
+
+
+def test_a_mark_wins_even_for_a_player_the_lineup_doesnt_list():
+    # A substitute (#30) the user marked, though no substitution was entered: the track shows #30
+    still = [lambda t, z=z: z for z in ZONES]
+    tracks = link_people(_frames(10, still), [COURT])
+    rally = RallyContext(0.0, 9.0, [11, 12, 13, 14, 15, 16], our_serve=False)
+    sub = tracks[0]
+    result = solve(tracks, [rally], [(1.0, sub.boxes[15], 30)], [COURT])
+    shown = result.at(sub.id, 5.0)
+    assert shown is not None and shown.player_id == 30 and shown.confirmed
+    assert all(n.track_id != sub.id for n in result.namings)  # not handed one of the lineup's names
+
+
+def test_a_track_that_settles_across_the_net_is_cut():
+    # The box slides from our blocker (y 8.5) onto the opponent's attacker (y 10) and stays there
+    tracks = link_people(_frames(6, [lambda t: (4.0, 8.5 if t < 3 else 8.5 + min(1.5, (t - 3) * 10))]), [COURT])
+    ours = [tr for tr in tracks if tr.court[0][1] < 9]
+    theirs = [tr for tr in tracks if tr.court[0][1] > 9]
+    assert ours and theirs and all(tr.court[-1][1] < 9.3 for tr in ours)
+
+
+def test_not_ours_on_a_marked_track_cuts_it():
+    from app.cv.identity import split_on_marks
+
+    tracks = link_people(_frames(10, [lambda t: (2.0 + 0.1 * t, 3.0)]), [COURT])
+    tr = tracks[0]
+    pieces = split_on_marks(tracks, [(1.0, tr.boxes[15], 11)], [(8.0, tr.boxes[120])])
+    assert len(pieces) == 2
+    result = solve(pieces, [RallyContext(0.0, 9.5, [11, 12, 13, 14, 15, 16], our_serve=False)],
+                   [(1.0, tr.boxes[15], 11)], [COURT], ignored=[(8.0, tr.boxes[120])])
+    assert result.at(pieces[0].id, 2.0).player_id == 11
+    assert pieces[1].id in result.ignored

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from app.cv.detection import Frame
-from app.cv.geometry import COURT_LENGTH, COURT_WIDTH, Court, court_at
+from app.cv.geometry import COURT_LENGTH, COURT_WIDTH, NET_Y, Court, court_at
 
 MAX_STEP_M = 1.2  # how far feet can move between consecutive frames (15 fps), plus detection jitter
 MAX_GAP_SECONDS = 1.0  # a person unseen longer than this starts a new track
@@ -24,10 +24,16 @@ MIN_TRACK_SECONDS = 0.5
 # image: an overlapping box right after is the same person even when the court distance says otherwise
 LINK_IOU = 0.3
 IOU_GAP_SECONDS = 0.35
+# Two players close together: when either could be either, both tracks end instead of guessing — a wrong guess
+# silently swaps two names, a break only asks the identity step (and the user's marks) to name the pieces again.
+# Kept tight: every break also loses continuity; on a set with ~200 marks, leave-one-rally-out naming was 51% without
+# breaks, 56% at 0.15 m, 54-55% at 0.2-0.35 m. Doubtful stitches are better joined (0 = off): the marks cut a wrong one.
+AMBIGUITY_MARGIN_M = 0.15
+STITCH_AMBIGUITY_M = 0.0
 # Far outside the court nobody plays: spectators, the second court's players, the referee's box
 AREA_MARGIN_M = 6.0
 
-CACHE_VERSION = 1
+CACHE_VERSION = 3  # 2: breaks at ambiguous crossings; 3: cut at net crossings
 
 
 @dataclass
@@ -108,6 +114,8 @@ def link_people(frames: list[Frame], courts: list[Court]) -> list[PersonTrack]:
                 elif gap <= IOU_GAP_SECONDS and (overlap := _iou(last_box, boxes[di])) >= LINK_IOU:
                     pairs.append((limit * (2.0 - overlap), ti, di))  # after every court-distance match
         pairs.sort()
+        cost = {(ti, di): c for c, ti, di in pairs}
+        chosen: list[tuple[int, int]] = []
         used_t: set[int] = set()
         used_d: set[int] = set()
         for _, ti, di in pairs:
@@ -115,10 +123,27 @@ def link_people(frames: list[Frame], courts: list[Court]) -> list[PersonTrack]:
                 continue
             used_t.add(ti)
             used_d.add(di)
+            chosen.append((ti, di))
+        # Crossing check: tracks A→a and B→b are ambiguous when A→b and B→a are nearly as cheap
+        ambiguous: set[int] = set()
+        for i, (ta, da) in enumerate(chosen):
+            for tb, db in chosen[i + 1:]:
+                cross = cost.get((ta, db)), cost.get((tb, da))
+                if None in cross:
+                    continue
+                if cross[0] + cross[1] - cost[(ta, da)] - cost[(tb, db)] < AMBIGUITY_MARGIN_M:
+                    ambiguous.update((ta, tb))
+        ended: set[int] = set()
+        for ti, di in chosen:
+            if ti in ambiguous:
+                used_d.discard(di)  # the detection starts a new track below
+                ended.add(ti)
+                continue
             tr = active[ti]
             tr.t.append(frame.t)
             tr.boxes.append([round(float(v), 4) for v in boxes[di]])
             tr.court.append([round(float(v), 3) for v in positions[di]])
+        active = [tr for k, tr in enumerate(active) if k not in ended]
         for di in keep:
             if di in used_d:
                 continue
@@ -126,7 +151,47 @@ def link_people(frames: list[Frame], courts: list[Court]) -> list[PersonTrack]:
             next_id += 1
             tracks.append(tr)
             active.append(tr)
-    return stitch([tr for tr in tracks if tr.end - tr.start >= MIN_TRACK_SECONDS])
+    return stitch([piece for tr in tracks for piece in split_at_net(tr) if piece.end - piece.start >= MIN_TRACK_SECONDS])
+
+
+NET_SIDE_MARGIN_M = 0.3  # feet this close to the center line could be either side (a jump, a jittery box)
+NET_SIDE_SECONDS = 0.5  # on the other side this long: it's another person, not a jitter
+
+
+def _side(tr: PersonTrack, last: bool) -> int:
+    """-1 our half, +1 the opponent's, 0 unknown: the side of the track's last (or first) clear sample."""
+    ys = [y for _, y in (reversed(tr.court) if last else tr.court)]
+    for y in ys[:15]:
+        if abs(y - NET_Y) > NET_SIDE_MARGIN_M:
+            return 1 if y > NET_Y else -1
+    return 0
+
+
+def split_at_net(tr: PersonTrack) -> list[PersonTrack]:
+    """Players don't cross the net: a track that settles on the other side of the center line jumped onto an
+    opponent (blocker and attacker face to face at the net). Cut it where the side changed."""
+    side = [0 if abs(y - NET_Y) <= NET_SIDE_MARGIN_M else (1 if y > NET_Y else -1) for _, y in tr.court]
+    cuts = []
+    current = next((s for s in side if s), 0)
+    i = 0
+    while i < len(side):
+        if side[i] and side[i] != current:
+            j = i
+            while j < len(side) and side[j] in (side[i], 0):
+                j += 1
+            if tr.t[j - 1] - tr.t[i] >= NET_SIDE_SECONDS:
+                cuts.append(i)
+                current = side[i]
+            i = j
+        else:
+            i += 1
+    if not cuts:
+        return [tr]
+    bounds = [0, *cuts, len(tr.t)]
+    return [
+        PersonTrack(tr.id if k == 0 else tr.id * 1000 + k, tr.t[a:b], tr.boxes[a:b], tr.court[a:b])
+        for k, (a, b) in enumerate(zip(bounds, bounds[1:]))
+    ]
 
 
 STITCH_GAP_SECONDS = 2.0
@@ -147,9 +212,20 @@ def stitch(tracks: list[PersonTrack]) -> list[PersonTrack]:
             if gap > STITCH_GAP_SECONDS:
                 break
             d = float(np.hypot(*(np.array(b.court[0]) - np.array(a.court[-1]))))
+            if _side(a, last=True) * _side(b, last=False) < 0:
+                continue  # never across the net
             if d <= STITCH_BASE_M + GAP_SPEED_M_S * gap * 0.5:
                 candidates.append((d + gap, a.id, b.id))
     candidates.sort()
+    # A break with two near-equal continuations (or a start with two near-equal predecessors) stays a break
+    best_next: dict[int, list[float]] = {}
+    best_prev: dict[int, list[float]] = {}
+    for c, a, b in candidates:
+        best_next.setdefault(a, []).append(c)
+        best_prev.setdefault(b, []).append(c)
+    unclear = {a for a, cs in best_next.items() if len(cs) > 1 and cs[1] - cs[0] < STITCH_AMBIGUITY_M}
+    unclear_b = {b for b, cs in best_prev.items() if len(cs) > 1 and cs[1] - cs[0] < STITCH_AMBIGUITY_M}
+    candidates = [c for c in candidates if c[1] not in unclear and c[2] not in unclear_b]
     by_id = {tr.id: tr for tr in tracks}
     next_of: dict[int, int] = {}
     prev_of: dict[int, int] = {}
@@ -203,7 +279,8 @@ def calibration_key(courts: list[Court]) -> str:
 
 def load_or_link(video: Path, detections_path: Path, frames_loader, courts: list[Court]) -> list[PersonTrack]:
     """Cached next to the video, per detection file (a new detector gives new boxes) and calibration."""
-    tag = detections_path.name.split(".krimson-det")[-1].removesuffix(".json.gz").lstrip("-")
+    name = detections_path.name
+    tag = "persons" if ".krimson-persons" in name else name.split(".krimson-det")[-1].removesuffix(".json.gz").lstrip("-")
     path = sidecar_path(video, tag)
     key = calibration_key(courts)
     if path.is_file():

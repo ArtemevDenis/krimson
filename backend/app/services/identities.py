@@ -57,22 +57,22 @@ def set_people(session: Session, set_id: int) -> SetPeople | None:
         return None
     courts = [Court.from_points(c.from_time, c.points) for c in cals]
     path = Path(video.original_path)
-    found = detection.existing_sidecars(path, config.DATA_DIR / "cv")
-    if not found:
+    source = detection.persons_source(path, config.DATA_DIR / "cv")
+    if source is None:
         return None
 
     contexts = _contexts(session, game_set)
     marks = [(m.time, m.box, m.player_id) for m in session.exec(select(PlayerMark).where(PlayerMark.set_id == set_id))]
     ignored = [(i.time, i.box) for i in session.exec(select(IgnoredPerson).where(IgnoredPerson.set_id == set_id))]
     key = hashlib.md5(json.dumps([
-        str(found[0]), found[0].stat().st_mtime, people.calibration_key(courts),
+        str(source), source.stat().st_mtime, people.calibration_key(courts),
         [(c.start, c.end, c.on_court, c.our_serve, c.ordered, c.squad) for c in contexts], sorted(marks), sorted(ignored),
     ], default=str).encode()).hexdigest()
     cached = _cache.get(set_id)
     if cached and cached[0] == key:
         return cached[1]
 
-    tracks = people.load_or_link(path, found[0], lambda: detection.load(found[0]).frames, courts)
+    tracks = identity.split_on_marks(people.load_or_link(path, source, lambda: detection.load(source).frames, courts), marks, ignored)
     result = SetPeople(tracks, identity.solve(tracks, contexts, marks, courts, ignored))
     _cache[set_id] = (key, result)
     return result

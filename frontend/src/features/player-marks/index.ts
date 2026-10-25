@@ -30,7 +30,7 @@ export {
   personSelected,
   selectedPersonStore,
 } from './model/marks-model'
-export { firstUnmarked, markedPersons, PASS_SERVE_OFFSET_SECONDS, peopleAt, personToAsk, predictedNames } from './model/marks-logic'
+export { firstUnmarked, FRAME_STEP_SECONDS, markedPersons, PASS_SERVE_OFFSET_SECONDS, peopleAt, personToAsk, predictedNames } from './model/marks-logic'
 export { PeopleOverlay } from './ui/people-overlay'
 export { PlayerMarksOverlay } from './ui/player-marks-overlay'
 export { PlayerPicker } from './ui/player-picker'

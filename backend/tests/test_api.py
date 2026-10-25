@@ -354,3 +354,55 @@ def test_marking_players_on_a_frame(tmp_path):
             {"time": 0.5, "box": left, "player_id": p7}, {"time": 0.5, "box": right, "player_id": p9},
         ]).json()["marks"]
         assert sorted((m["player_id"], m["box"] == left) for m in both) == sorted([(p7, True), (p9, False)])
+
+
+def test_pipeline_of_a_new_set_points_to_the_next_step(tmp_path):
+    import numpy as np
+    from sqlmodel import Session
+
+    from app.cv import detection
+    from app.db import engine
+    from app.models import Video
+
+    with TestClient(app) as c:
+        team = c.post("/api/teams", json={"name": "Pipe"}).json()
+        match = c.post("/api/matches", json={"team_id": team["id"], "opponent": "X", "date": "2026-10-25"}).json()
+        set_id = c.post(f"/api/matches/{match['id']}/sets").json()["set"]["id"]
+        steps = {s["key"]: s for s in c.get(f"/api/sets/{set_id}/pipeline").json()}
+        assert list(steps)[:3] == ["video", "lineup", "court"]
+        assert steps["video"]["status"] == "todo" and steps["court"]["status"] == "blocked"
+
+        video_path = tmp_path / "VID_PIPE.mp4"
+        video_path.write_bytes(b"")
+        with Session(engine) as s:
+            v = Video(original_path=str(video_path), status="ready")
+            s.add(v)
+            s.commit()
+            vid = v.id
+        c.patch(f"/api/sets/{set_id}", json={"video_id": vid})
+        steps = {s["key"]: s for s in c.get(f"/api/sets/{set_id}/pipeline").json()}
+        assert steps["video"]["status"] == "done" and steps["court"]["action"] == "court"
+        assert steps["ball"]["action"] == "upload_ball" and "--what ball" in steps["ball"]["command"]
+
+        # The ball file from Windows: wrong name refused, right one saved next to the video
+        det = detection.Detections(detection.DetectionSettings(), [detection.Frame(0.0, np.array([[0.5, 0.5, 0.01, 0.9]]), np.zeros((0, 5)))])
+        good = tmp_path / f"{video_path.name}.krimson-det-venue-x-ball-v001.json.gz"
+        detection.save(det, good)
+        bad = c.post(f"/api/videos/{vid}/detections", files={"file": ("other.mp4.krimson-det.json.gz", good.read_bytes())})
+        assert bad.status_code == 422
+        good.unlink()
+        ok = c.post(f"/api/videos/{vid}/detections", files={"file": (good.name, _det_bytes(det, tmp_path))})
+        assert ok.status_code == 200 and ok.json()["balls"] == 1
+        assert (tmp_path / good.name).is_file()
+        steps = {s["key"]: s for s in c.get(f"/api/sets/{set_id}/pipeline").json()}
+        assert steps["ball"]["status"] == "done"
+
+
+def _det_bytes(det, tmp_path) -> bytes:
+    from app.cv import detection
+
+    path = tmp_path / "tmp.krimson-det.json.gz"
+    detection.save(det, path)
+    data = path.read_bytes()
+    path.unlink()
+    return data

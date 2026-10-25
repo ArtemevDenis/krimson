@@ -148,6 +148,7 @@ export const rallySchema = z.object({
   substitutions: z.array(substitutionSchema),
   tags: z.array(z.string()),
   source: z.string(),
+  confidence: z.number().nullable().default(null), // auto rallies: how sure the whistle finder was
   note: z.string().nullable(),
   actions: z.array(actionSchema),
   state: rallyStateSchema.nullable(),
@@ -419,3 +420,18 @@ export const learningSummarySchema = z.object({
   versions: z.record(z.string(), z.array(modelVersionSchema)),
 })
 export type LearningSummaryType = z.infer<typeof learningSummarySchema>
+
+export const pipelineStepSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  status: z.enum(['done', 'attention', 'todo', 'blocked', 'running']),
+  detail: z.string(),
+  action: z.string().nullable(),
+  progress: z.number().optional(),
+  job_id: z.number().optional(),
+  command: z.string().optional(),
+  doubtful: z.number().optional(),
+  marked: z.number().optional(),
+  total: z.number().optional(),
+})
+export type PipelineStepType = z.infer<typeof pipelineStepSchema>

@@ -2,6 +2,7 @@ import type { IgnoredPersonType, PlayerMarkType, PlayerType } from '@/shared/api
 import { formatTime } from '@/shared/lib/format'
 import { playerLabel } from '@/shared/lib/volleyball'
 import { Button } from '@/shared/ui/button'
+import { FRAME_STEP_SECONDS } from '../model/marks-logic'
 
 type Props = {
   frameTime: number | null
@@ -22,6 +23,8 @@ type Props = {
   /** Players pass: rally index / count, and the step buttons */
   pass?: { index: number; count: number; predictedCount: number; onConfirm: () => void; onSkip: () => void; onBack: () => void } | null
   typed?: string
+  /** Shift the frame by seconds: two people in one box at the net are marked where they stand apart */
+  onStep: (seconds: number) => void
   onClose: () => void
 }
 
@@ -65,7 +68,13 @@ export function PlayerPicker(props: Props) {
         <span class="text-emerald-300">
           кадр {frameTime !== null ? formatTime(frameTime) : '—'} · людей на кадре {personCount} · отметок в партии {props.marksTotal}
         </span>
-        <Button size="sm" variant="ghost" class="ml-auto" onClick={props.onClose}>
+        <span class="ml-auto flex items-center gap-1" title="Двое у сетки в одной рамке: сдвиньте кадр туда, где они разошлись, и отметьте обоих — номера разделятся">
+          <Button size="sm" variant="ghost" onClick={() => props.onStep(-1)}>−1 с</Button>
+          <Button size="sm" variant="ghost" onClick={() => props.onStep(-FRAME_STEP_SECONDS)}>‹ кадр <span class="opacity-70">,</span></Button>
+          <Button size="sm" variant="ghost" onClick={() => props.onStep(FRAME_STEP_SECONDS)}>кадр › <span class="opacity-70">.</span></Button>
+          <Button size="sm" variant="ghost" onClick={() => props.onStep(1)}>+1 с</Button>
+        </span>
+        <Button size="sm" variant="ghost" onClick={props.onClose}>
           Готово
         </Button>
       </div>
@@ -74,7 +83,7 @@ export function PlayerPicker(props: Props) {
           ? 'Видео остановилось: анализатор не узнал этого человека на нашей половине. Кто это? После ответа видео продолжится.'
           : hasSelection
             ? 'Кто это? Выберите игрока.'
-            : 'Кликните по человеку в рамке на кадре. Перемотайте видео, чтобы отметить на другом кадре — рамки обновятся.'}
+            : 'Кликните по человеку в рамке на кадре. Двое в одной рамке у сетки — сдвиньте кадр (, и .), где они уже порознь, и отметьте обоих.'}
       </p>
       <div class="flex flex-wrap gap-1">{onCourt.map(button)}</div>
       {bench.length > 0 && <div class="flex flex-wrap gap-1 opacity-70">{bench.map(button)}</div>}

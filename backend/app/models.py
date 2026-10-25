@@ -88,6 +88,8 @@ class Rally(SQLModel, table=True):
     substitutions: list[dict] = Field(default_factory=list, sa_column=_json_list())
     tags: list[str] = Field(default_factory=list, sa_column=_json_list())
     source: str = "manual"  # manual / auto
+    # Auto rallies: how sure the finder was (a serve whistle and an end whistle vs. a guess); None for manual ones
+    confidence: float | None = None
     note: str | None = None
 
 

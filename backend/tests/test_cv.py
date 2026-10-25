@@ -163,3 +163,17 @@ def test_serve_box_only_when_the_player_stands_behind_the_baseline():
     # server outside the frame: the nearest person is a teammate on the court — keep the serve, drop his box
     on_court = infer_actions([_touch(0, "us", 4), _touch(1.5, "them", 15)])
     assert on_court[0].skill == "S" and on_court[0].player_box is None
+
+
+def test_whistles_alone_give_sure_and_doubtful_rallies():
+    from app.cv.audio import Whistle
+    from app.cv.params import DEFAULT_PARAMS
+    from app.cv.rallies import with_whistles
+
+    p = DEFAULT_PARAMS.with_values(whistle_without_ball=True, whistle_default_rally=8.0)
+    whistles = [Whistle(10.0, 10.5, "start", 48), Whistle(18.0, 18.4, "end", 40), Whistle(40.0, 40.5, "start", 47)]
+    found = with_whistles([], whistles, p)
+    assert len(found) == 2
+    sure, doubtful = found
+    assert sure.confidence >= 0.75 and sure.end < 20  # ended at the end whistle
+    assert doubtful.confidence < 0.75 and abs(doubtful.end - 48.0) < 0.01  # no end whistle: the usual length

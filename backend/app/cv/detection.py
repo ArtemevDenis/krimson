@@ -1,10 +1,16 @@
-"""YOLO pass over a video — the only expensive CV step, so its output is cached in a sidecar file
-next to the video (`<video>.krimson-det.json.gz`). It can be computed on the Windows/CUDA machine
-with `python -m app.cv.precompute` and copied over together with the video."""
+"""YOLO passes over a video — the expensive CV steps, so their output is cached in sidecar files next to the video.
+
+Two passes with different needs:
+  * people (`<video>.krimson-persons.json.gz`): a small stock model at a lower frame rate is enough to follow players,
+    so it runs on the Mac right after the court is calibrated;
+  * the ball (`<video>.krimson-det[-<model>].json.gz`): the hall's fine-tuned detector at full rate, on the
+    Windows/CUDA machine (`python -m app.cv.precompute --what ball`), copied back next to the video.
+An older combined file (ball and people together) still serves both."""
 
 import gzip
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +31,12 @@ class DetectionSettings:
     fps: float = 15.0
     ball_conf: float = 0.1
     person_conf: float = 0.3
+    what: str = "all"  # all / persons / ball: which classes the pass keeps
+
+
+# People only: the stock small model is good at people, and players don't need the ball's frame rate
+PERSONS_SETTINGS = DetectionSettings(model="yolo11s.pt", tag="persons", imgsz=1280, fps=7.5, what="persons")
+PERSONS_MAX_GAP_SECONDS = 0.2  # a ball frame takes the people of the nearest people frame within this
 
 
 @dataclass
@@ -152,7 +164,8 @@ def run(video: Path, settings: DetectionSettings, progress: ProgressFn) -> Detec
             if not ok:
                 continue
             h, w = frame.shape[:2]
-            res = model.predict(frame, imgsz=settings.imgsz, classes=[person_id, ball_id], conf=conf, device=device, verbose=False)[0]
+            classes = {"persons": [person_id], "ball": [ball_id]}.get(settings.what, [person_id, ball_id])
+            res = model.predict(frame, imgsz=settings.imgsz, classes=classes, conf=conf, device=device, verbose=False)[0]
             cls = res.boxes.cls.cpu().numpy()
             scores = res.boxes.conf.cpu().numpy()
             xyxy = res.boxes.xyxy.cpu().numpy() / np.array([w, h, w, h])
@@ -189,3 +202,60 @@ def load_or_run(video: Path, settings: DetectionSettings, progress: ProgressFn, 
         cache_dir.mkdir(parents=True, exist_ok=True)
         save(det, preferred[1])
     return det
+
+
+def persons_sidecar(video: Path) -> Path:
+    return video.with_name(f"{video.name}.krimson-persons.json.gz")
+
+
+def persons_source(video: Path, cache_dir: Path | None) -> Path | None:
+    """Where the people of a video come from: the people pass, else a combined detection file."""
+    own = [persons_sidecar(video)] + ([cache_dir / persons_sidecar(video).name] if cache_dir is not None else [])
+    for path in own:
+        if path.is_file():
+            return path
+    for path in existing_sidecars(video, cache_dir):
+        if _has_persons(path):
+            return path
+    return None
+
+
+def _has_persons(path: Path) -> bool:
+    return _has_persons_cached(str(path), path.stat().st_mtime)
+
+
+@lru_cache(maxsize=32)
+def _has_persons_cached(path: str, _mtime: float) -> bool:
+    return any(len(f.persons) for f in load(Path(path)).frames[:2000])
+
+
+def load_persons(video: Path, cache_dir: Path | None) -> list[Frame] | None:
+    source = persons_source(video, cache_dir)
+    return load(source).frames if source is not None else None
+
+
+def with_persons(frames: list[Frame], persons: list[Frame] | None) -> list[Frame]:
+    """Ball frames from a ball-only pass get the people of the nearest people frame (touches are placed on players)."""
+    if not persons or any(len(f.persons) for f in frames):
+        return frames
+    times = np.array([f.t for f in persons])
+    out = []
+    for f in frames:
+        i = int(np.abs(times - f.t).argmin())
+        near = persons[i].persons if abs(times[i] - f.t) <= PERSONS_MAX_GAP_SECONDS else np.zeros((0, 5))
+        out.append(Frame(f.t, f.balls, near))
+    return out
+
+
+def run_persons(video: Path, progress: ProgressFn, cache_dir: Path | None = None) -> Path:
+    det = run(video, PERSONS_SETTINGS, progress)
+    target = persons_sidecar(video)
+    try:
+        save(det, target)
+    except OSError:
+        if cache_dir is None:
+            raise
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        target = cache_dir / target.name
+        save(det, target)
+    return target

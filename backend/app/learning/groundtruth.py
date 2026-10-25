@@ -43,7 +43,7 @@ class GtSet:
 
     def load_frames(self) -> list[detection.Frame]:
         assert self.detections is not None
-        return detection.load(self.detections).frames
+        return detection.with_persons(detection.load(self.detections).frames, detection.load_persons(self.video, config.DATA_DIR / "cv"))
 
 
 def load_verified(session: Session, venue_slug: str | None = None, team_slug: str | None = None) -> list[GtSet]:

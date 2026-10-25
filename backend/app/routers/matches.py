@@ -281,6 +281,42 @@ def clear_set(set_id: int, session: Session = Depends(get_session)) -> dict:
     return workspace(session, set_id)
 
 
+@router.get("/sets/{set_id}/pipeline")
+def set_pipeline(set_id: int, session: Session = Depends(get_session)) -> list[dict]:
+    from app.services.pipeline import pipeline
+
+    return pipeline(session, set_id)
+
+
+def _set_job(session: Session, set_id: int, kind: str) -> dict:
+    game_set = get_or_404(session, GameSet, set_id)
+    if game_set.video_id is None:
+        raise HTTPException(422, "Сначала привяжите видео к партии")
+    return jobs.submit(session, kind, {"set_id": set_id}).model_dump(mode="json")
+
+
+@router.post("/sets/{set_id}/find-rallies")
+def find_rallies(set_id: int, session: Session = Depends(get_session)) -> dict:
+    """Rallies from the referee's whistles: seconds, no detections needed."""
+    return _set_job(session, set_id, "find_rallies")
+
+
+@router.post("/sets/{set_id}/detect-persons")
+def detect_persons(set_id: int, session: Session = Depends(get_session)) -> dict:
+    """The people pass on this machine, for marking and following players."""
+    return _set_job(session, set_id, "detect_persons")
+
+
+@router.post("/rallies/{rally_id}/keep")
+def keep_rally(rally_id: int, session: Session = Depends(get_session)) -> dict:
+    """A checked auto rally becomes the user's: re-running the analysis no longer replaces it."""
+    rally = get_or_404(session, Rally, rally_id)
+    rally.source = "manual"
+    session.add(rally)
+    session.commit()
+    return workspace(session, rally.set_id)
+
+
 @router.post("/sets/{set_id}/analyze")
 def analyze_set(set_id: int, body: AnalyzeIn, session: Session = Depends(get_session)) -> dict:
     game_set = get_or_404(session, GameSet, set_id)

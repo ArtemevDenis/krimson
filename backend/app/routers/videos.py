@@ -100,6 +100,35 @@ def stream(video_id: int, session: Session = Depends(get_session)) -> FileRespon
     return FileResponse(path, media_type="video/mp4")
 
 
+@router.post("/{video_id}/detections")
+def upload_detections(video_id: int, file: UploadFile, session: Session = Depends(get_session)) -> dict:
+    """A detection file computed on the Windows machine (`<video>.krimson-det-….json.gz`): saved next to the video,
+    where the analyzer looks for it. The name must belong to this video, the content must load."""
+    from app.cv import detection
+
+    video = get_or_404(session, Video, video_id)
+    source = Path(video.original_path)
+    name = Path(file.filename or "").name
+    if not (name.startswith(f"{source.name}.krimson-") and name.endswith(".json.gz")):
+        raise HTTPException(422, f"Файл должен называться «{source.name}.krimson-det….json.gz» — это расчёт для другого видео?")
+    tmp = config.DATA_DIR / "cv" / f".upload-{name}"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("wb") as out:
+        shutil.copyfileobj(file.file, out, length=4 * 1024 * 1024)
+    try:
+        det = detection.load(tmp)
+    except Exception as exc:  # noqa: BLE001 — anything unreadable is the user's wrong file
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(422, f"Не удалось прочитать файл детекций: {exc}") from exc
+    target = source.with_name(name)
+    try:
+        shutil.move(str(tmp), target)
+    except OSError:
+        target = config.DATA_DIR / "cv" / name
+        shutil.move(str(tmp), target)
+    return {"file": target.name, "frames": len(det.frames), "balls": sum(1 for f in det.frames if len(f.balls))}
+
+
 @router.get("/{video_id}/calibrations")
 def list_calibrations(video_id: int, session: Session = Depends(get_session)) -> list[dict]:
     get_or_404(session, Video, video_id)

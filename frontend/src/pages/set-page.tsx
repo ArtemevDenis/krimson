@@ -1,7 +1,20 @@
 import { useUnit } from 'effector-react'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { Link } from 'wouter-preact'
+import { Link, useLocation } from 'wouter-preact'
 import { CourtCalibrator } from '@/features/court-calibration'
+import {
+  detectPersonsFx,
+  findRalliesFx,
+  keepRallyFx,
+  loadPipelineFx,
+  pipelineClosed,
+  pipelineErrorStore,
+  pipelineOpened,
+  pipelineStore,
+  PipelinePanel,
+  RallyReview,
+  uploadBallFx,
+} from '@/features/set-pipeline'
 import {
   addIgnoreFx,
   addMarkFx,
@@ -41,6 +54,8 @@ import {
   PlayerMarksOverlay,
   PlayerPicker,
   selectedPersonStore,
+  FRAME_STEP_SECONDS,
+  loadPeopleFx,
 } from '@/features/player-marks'
 import {
   activeSuggestionIdStore,
@@ -121,10 +136,14 @@ export function SetPage({ setId }: { setId: number }) {
   const [peopleSet, peopleWindow, peopleError] = useUnit([peopleSetStore, peopleWindowStore, peopleErrorStore])
   const [ignored, autoStop, askedTracks, resumeAfter] = useUnit([ignoredStore, autoStopStore, askedTracksStore, resumeAfterStore])
   const pass = useUnit(passStore)
+  const [pipelineSteps, pipelineError, uploadingBall] = useUnit([pipelineStore, pipelineErrorStore, uploadBallFx.pending])
+  const [reviewing, setReviewing] = useState(false)
+  const [, navigate] = useLocation()
   const passActive = pass !== null && pass.setId === setId
   const [typed, setTyped] = useState('')
   // Pass actions are computed further down (after the workspace is loaded); the key handler reads the latest ones
   const passConfirmRef = useRef<() => void>(() => {})
+  const stepFrameRef = useRef<(seconds: number) => void>(() => {})
   const peopleShown = peopleSet === setId && !marking
   const liveTime = useVideoTime(peopleShown)
   const peopleFrame = peopleShown ? peopleAt(peopleWindow?.frames ?? [], liveTime) : null
@@ -137,11 +156,30 @@ export function SetPage({ setId }: { setId: number }) {
 
   useEffect(() => {
     workspaceOpened(setId)
+    pipelineOpened(setId)
     return () => {
       workspaceClosed()
       markingClosed()
+      pipelineClosed()
     }
   }, [setId])
+
+  // The steps follow the set: new rallies, lineup, video, calibration, suggestions, verification
+  const pipelineSignature = ws
+    ? [ws.rallies.length, ws.rallies.filter((r) => r.source === 'auto').length, ws.suggestions.length, ws.set.verified,
+       ws.set.lineup.join(), ws.video?.status, calibrated].join('|')
+    : ''
+  useEffect(() => {
+    if (ws) void loadPipelineFx(setId)
+  }, [pipelineSignature])
+
+  // A background step (whistles, people) finished: its results are in the workspace now
+  const runningSteps = pipelineSteps.filter((s) => s.status === 'running').map((s) => s.key).join()
+  const wasRunning = useRef('')
+  useEffect(() => {
+    if (wasRunning.current && wasRunning.current !== runningSteps) void loadWorkspaceFx(setId)
+    wasRunning.current = runningSteps
+  }, [runningSteps])
 
   // Names over the video: keep the loaded window ahead of playback (checked twice a second)
   const halfSecond = Math.floor(liveTime * 2)
@@ -177,7 +215,9 @@ export function SetPage({ setId }: { setId: number }) {
         setTyped('')
       } else if (e.key === 'ArrowRight' && passActive && pass) passStepped(pass.index + 1)
       else if (e.key === 'ArrowLeft' && passActive && pass) passStepped(pass.index - 1)
-      else if (e.key === 'Escape') markingClosed()
+      else if (e.code === 'Comma' || e.code === 'Period') {
+        stepFrameRef.current((e.code === 'Comma' ? -1 : 1) * (e.shiftKey ? 1 : FRAME_STEP_SECONDS))
+      } else if (e.key === 'Escape') markingClosed()
       else handled = false
       if (handled) {
         e.preventDefault()
@@ -251,6 +291,53 @@ export function SetPage({ setId }: { setId: number }) {
     void passConfirmFx({ setId, marks: toConfirm, next: last ? pass.index : pass.index + 1 }).then(() => last && markingClosed())
   }
   passConfirmRef.current = passConfirm
+  // Two people in one box at the net: step to where they stand apart and mark both there
+  const stepFrame = (seconds: number) => {
+    const t = Math.max(0, playerController.time() + seconds)
+    playerController.showFrame(t)
+    if (passActive) void loadPeopleFx({ setId, start: Math.max(0, t - 1.5), end: t + 1.5 })
+  }
+  stepFrameRef.current = stepFrame
+  const startPlayersPass = () => {
+    playerController.pause()
+    void loadMarksFx(setId).then((state) =>
+      passStarted({ setId, times: rallyServeTimes, index: firstUnmarked(rallyServeTimes, state.marks) }),
+    )
+  }
+  const doubtfulRallies = ws.rallies.filter((r) => r.source === 'auto' && r.confidence !== null && r.confidence < 0.75)
+  const runStep = (action: string | null) => {
+    switch (action) {
+      case 'video':
+      case 'lineup':
+      case 'court':
+        setPanel(action)
+        break
+      case 'find_rallies':
+        void findRalliesFx(setId).then((job) => {
+          void loadWorkspaceFx(setId)
+          const r = job.result ?? {}
+          if (job.status === 'done') setNotice(`Розыгрышей по свисткам: ${String(r.found ?? 0)}, уверенных ${String(r.sure ?? 0)}. Добавлено ${String(r.added ?? 0)}.`)
+        })
+        break
+      case 'review_rallies':
+        setReviewing(true)
+        break
+      case 'detect_persons':
+        void detectPersonsFx(setId)
+        break
+      case 'players_pass':
+        startPlayersPass()
+        break
+      case 'analyze':
+        void analyze()
+        break
+      case 'learning':
+        navigate('/learning')
+        break
+      default:
+        break
+    }
+  }
   // Who could be on the frame: the lineup of the rally there (libero included), the rest of the roster after
   const stateAtFrame = (framePersons && rallyAtTime(ws, framePersons.time)?.state) || ws.current
   const onCourtIds = new Set([...(stateAtFrame?.on_court ?? []), ...(stateAtFrame?.lineup ?? []), ...ws.set.libero_ids])
@@ -350,16 +437,7 @@ export function SetPage({ setId }: { setId: number }) {
               variant={passActive ? 'primary' : 'secondary'}
               disabled={rallyServeTimes.length === 0}
               title="Розыгрыш за розыгрышем на кадре подачи: подтвердить номера (Enter) или исправить. Лучше до разметки действий"
-              onClick={() => {
-                if (passActive) {
-                  markingClosed()
-                  return
-                }
-                playerController.pause()
-                void loadMarksFx(setId).then((state) =>
-                  passStarted({ setId, times: rallyServeTimes, index: firstUnmarked(rallyServeTimes, state.marks) }),
-                )
-              }}
+              onClick={() => (passActive ? markingClosed() : startPlayersPass())}
             >
               Проход по игрокам
             </Button>
@@ -400,9 +478,9 @@ export function SetPage({ setId }: { setId: number }) {
             size="sm"
             disabled={!ws.video || analysis !== null}
             onClick={() => void analyze()}
-            title="Поиск розыгрышей и подсказки действий по видео. Долго: на Mac около часа на партию"
+            title="Подсказки касаний по мячу (и уточнение розыгрышей). Нужен расчёт мяча — этап «Мяч» в обработке партии"
           >
-            {analysis !== null ? `Анализ… ${Math.round(analysis * 100)}%` : 'Авторазметка'}
+            {analysis !== null ? `Анализ… ${Math.round(analysis * 100)}%` : 'Подсказки'}
           </Button>
         </div>
       </div>
@@ -413,6 +491,28 @@ export function SetPage({ setId }: { setId: number }) {
             ×
           </button>
         </div>
+      )}
+
+      <PipelinePanel
+        steps={pipelineSteps}
+        onAction={(step) => runStep(step.action)}
+        uploading={uploadingBall}
+        onUploadBall={(file) =>
+          ws.video &&
+          void uploadBallFx({ videoId: ws.video.id, file }).then((r) =>
+            setNotice(`Расчёт мяча загружен: ${r.file}, мяч найден на ${r.balls} из ${r.frames} кадров. Теперь можно получить подсказки.`),
+          )
+        }
+      />
+      <ErrorBanner message={pipelineError} />
+      {reviewing && (
+        <RallyReview
+          rallies={doubtfulRallies}
+          onPlay={(r) => r.start_time !== null && playerController.playSegment(Math.max(0, r.start_time - 1), (r.end_time ?? r.start_time + 10) + 2)}
+          onKeep={(r) => void keepRallyFx(r.id).then(() => loadWorkspaceFx(setId))}
+          onDelete={(r) => void deleteRallyFx(r.id)}
+          onClose={() => setReviewing(false)}
+        />
       )}
 
       {ws.video && (
@@ -533,6 +633,7 @@ export function SetPage({ setId }: { setId: number }) {
                   onIgnore={() => framePersons && selectedPerson && void addIgnoreFx({ setId, time: framePersons.time, box: selectedPerson })}
                   onUnignore={(id) => void deleteIgnoreFx(id)}
                   typed={typed}
+                  onStep={stepFrame}
                   pass={
                     passActive && pass
                       ? {

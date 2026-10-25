@@ -23,13 +23,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--imgsz", type=int, default=defaults.imgsz)
     parser.add_argument("--fps", type=float, default=defaults.fps)
     parser.add_argument("--force", action="store_true", help="пересчитать, даже если файл уже есть")
+    parser.add_argument("--what", choices=["ball", "persons", "all"], default="ball",
+                        help="ball — только мяч моделью зала (Windows); persons — только люди (быстро, можно на Mac)")
     args = parser.parse_args(argv)
 
-    base = detection_settings(resolve(args.venue, None))
-    settings = detection.DetectionSettings(model=base.model, tag=base.tag, imgsz=args.imgsz, fps=args.fps)
+    if args.what == "persons":
+        settings = detection.PERSONS_SETTINGS
+    else:
+        base = detection_settings(resolve(args.venue, None))
+        settings = detection.DetectionSettings(model=base.model, tag=base.tag, imgsz=args.imgsz, fps=args.fps, what=args.what)
     print(f"Устройство: {detection.pick_device()}, модель {settings.tag or settings.model}, {settings.imgsz}px, {settings.fps} кадр/с")
     for video in args.videos:
-        target = detection.sidecar_path(video, settings.tag)
+        target = detection.persons_sidecar(video) if args.what == "persons" else detection.sidecar_path(video, settings.tag)
         if target.exists() and not args.force:
             print(f"✓ {video.name}: уже посчитано ({target.name})")
             continue
