@@ -26,7 +26,15 @@ SEARCH_SPACE = {
     "min_turn_speed": (0.05, 0.4),
     "max_person_dist": (0.02, 0.08),
     "block_window": (0.4, 1.2),
+    "whistle_start_db": (36.0, 52.0),
+    "whistle_end_db": (30.0, 46.0),
+    "whistle_min_seconds": (0.05, 0.4),
+    "whistle_lead": (0.0, 1.5),
+    "whistle_end_tail": (0.0, 3.5),
+    "whistle_default_rally": (3.0, 14.0),
+    "ball_only_min_conf": (0.3, 1.01),
 }
+CHOICES = {"whistle_without_ball": (True, False)}
 
 
 def tune(prepared: list[PreparedSet], base: AnalyzerParams, progress: ProgressFn, trials_per_combo: int = 40, seed: int = 7) -> dict:
@@ -52,7 +60,8 @@ def tune(prepared: list[PreparedSet], base: AnalyzerParams, progress: ProgressFn
                         values[name] = min(hi, max(lo, cur + rng.gauss(0, (hi - lo) * 0.1)))
                     else:
                         values[name] = rng.uniform(lo, hi)
-                candidate = anchor.with_values(**{k: round(v, 3) for k, v in values.items()})
+                choices = {name: rng.choice(options) if not around else getattr(best_params, name) for name, options in CHOICES.items()}
+                candidate = anchor.with_values(**{k: round(v, 3) for k, v in values.items()}, **choices)
             report = evaluate(prepared, candidate)
             if report["objective"] > best["objective"]:
                 best_params, best = candidate, report

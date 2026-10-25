@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.cv import tracking
+from app.cv import audio, tracking
 from app.cv.base import ProgressFn
 from app.cv.detection import Frame
 from app.cv.detectors.ball_tracking import analyze_tracks
@@ -21,6 +21,7 @@ class PreparedSet:
     frames: list[Frame]
     courts: list[Court]
     tracks_cache: dict[tuple, list[tracking.Track]]
+    tones: list[audio.Tone] | None = None  # whistle candidates from the sound track, None without audio
 
     def tracks(self, p: AnalyzerParams) -> list[tracking.Track]:
         key = (p.max_gap, p.max_speed, p.start_conf, p.min_track_points, p.min_track_extent)
@@ -40,13 +41,13 @@ def prepare(sets: list[GtSet], progress: ProgressFn) -> tuple[list[PreparedSet],
             skipped.append(f"{gt.label}: нет розыгрышей с началом и концом")
         else:
             courts = [Court.from_points(c.from_time, c.points) for c in gt.calibrations]
-            ready.append(PreparedSet(gt, gt.load_frames(), courts, {}))
+            ready.append(PreparedSet(gt, gt.load_frames(), courts, {}, audio.load_or_detect(gt.video)))
         progress((i + 1) / max(len(sets), 1))
     return ready, skipped
 
 
 def score_prepared(ps: PreparedSet, p: AnalyzerParams) -> Score:
-    result = analyze_tracks(ps.tracks(p), ps.frames, ps.courts, p)
+    result = analyze_tracks(ps.tracks(p), ps.frames, ps.courts, p, ps.tones)
     pred = [(r.start, r.end) for r in result.rallies]
     pred_skills = [[a.skill for a in result.actions if r.start <= a.time <= r.end] for r in result.rallies]
     gt = [(r.start, r.end) for r in ps.gt.rallies]

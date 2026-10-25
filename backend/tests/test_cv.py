@@ -100,3 +100,58 @@ def test_ball_handling_without_long_flights_is_not_a_rally():
     tosses = [_arc(1.0 + 1.2 * i, 0.4, 0.45, 0.8, top=0.5) for i in range(4)]
     frames = _frames(8, lambda t: next((p for a in tosses if (p := a(t))), None))
     assert segment_rallies(link_tracks(frames)) == []
+
+
+def _noise_with_tones(seconds: float, tones: list[tuple[float, float, float, float]], seed: int = 1) -> np.ndarray:
+    """White-ish hall noise plus pure tones: (start, duration, frequency, amplitude)."""
+    from app.cv.audio import SAMPLE_RATE
+
+    rng = np.random.default_rng(seed)
+    t = np.arange(int(seconds * SAMPLE_RATE)) / SAMPLE_RATE
+    x = rng.normal(0, 0.05, len(t)).astype(np.float32)
+    for start, dur, freq, amp in tones:
+        m = (t >= start) & (t < start + dur)
+        x[m] += (amp * np.sin(2 * np.pi * freq * t[m])).astype(np.float32)
+    return x
+
+
+def test_whistle_tones_are_found_in_noise():
+    from app.cv.audio import classify, detect_tones
+
+    samples = _noise_with_tones(20, [(3.0, 0.6, 3600, 0.5), (11.0, 0.3, 1600, 0.15)])
+    tones = detect_tones(samples)
+    high = [t for t in tones if t.band == "high"]
+    low = [t for t in tones if t.band == "low"]
+    assert len(high) == 1 and abs(high[0].start - 3.0) < 0.1 and high[0].strength > 40
+    assert len(low) == 1 and abs(low[0].start - 11.0) < 0.1
+
+    whistles = classify(tones, start_db=40, end_db=30, min_seconds=0.1)
+    assert [w.kind for w in whistles] == ["start", "end"]
+
+
+def test_whistles_set_rally_boundaries():
+    from app.cv.audio import Whistle
+    from app.cv.base import RallySegment
+    from app.cv.params import DEFAULT_PARAMS
+    from app.cv.rallies import with_whistles
+
+    p = DEFAULT_PARAMS.with_values(whistle_lead=0.5, whistle_end_tail=1.0, ball_only_min_conf=0.7)
+    ball = [
+        RallySegment(12.0, 20.0, 0.9),  # rally 1 seen by the ball, starts late (serve flight missed)
+        RallySegment(31.0, 35.0, 0.9),  # rally 2: end whistle heard at 33 — ends there, not at 35
+        RallySegment(60.0, 64.0, 0.4),  # ball handling in a break: no whistle, low confidence
+    ]
+    whistles = [
+        Whistle(10.0, 10.6, "start", 48), Whistle(10.7, 11.0, "start", 47),  # one long whistle, split
+        Whistle(30.0, 30.5, "start", 49), Whistle(33.0, 33.4, "end", 38),
+    ]
+    rallies = with_whistles(ball, whistles, p)
+    assert [(r.start, round(r.end, 1)) for r in rallies] == [(9.5, 20.0), (29.5, 34.4)]
+
+
+def test_without_whistles_ball_rallies_stay():
+    from app.cv.base import RallySegment
+    from app.cv.rallies import with_whistles
+
+    ball = [RallySegment(1.0, 5.0, 0.5)]
+    assert with_whistles(ball, []) == ball

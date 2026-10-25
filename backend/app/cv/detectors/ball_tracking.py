@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app import config
-from app.cv import actions, detection, rallies, tracking
+from app.cv import actions, audio, detection, rallies, tracking
 from app.cv.base import ActionHint, AnalysisResult, CalibrationInput, ProgressFn
 from app.cv.geometry import Court
 from app.cv.params import DEFAULT_PARAMS, AnalyzerParams
@@ -23,7 +23,8 @@ class BallTrackingAnalyzer:
         det = detection.load_or_run(
             video, detection_settings(profile), lambda p: progress(p * DETECTION_SHARE), cache_dir=config.DATA_DIR / "cv"
         )
-        result = analyze_detections(det.frames, courts, profile.params)
+        tones = audio.load_or_detect(video)
+        result = analyze_detections(det.frames, courts, profile.params, tones)
 
         players_weights = profile.players_weights()
         if players_weights is not None:
@@ -35,21 +36,31 @@ class BallTrackingAnalyzer:
             )
         # The cache actually used may come from another detector version (e.g. computed on Windows)
         used = det.settings.tag or "stock"
-        result.version = f"{self.name} {profile.describe()} cache={used}"
+        result.version = f"{self.name} {profile.describe()} cache={used} audio={'on' if tones is not None else 'off'}"
         return result
 
 
-def analyze_detections(frames: list[detection.Frame], courts: list[Court], p: AnalyzerParams = DEFAULT_PARAMS) -> AnalysisResult:
+def analyze_detections(
+    frames: list[detection.Frame], courts: list[Court], p: AnalyzerParams = DEFAULT_PARAMS, tones: list[audio.Tone] | None = None
+) -> AnalysisResult:
     tracks = tracking.link_tracks(frames, p)
-    return analyze_tracks(tracks, frames, courts, p)
+    return analyze_tracks(tracks, frames, courts, p, tones)
 
 
 def analyze_tracks(
-    tracks: list[tracking.Track], frames: list[detection.Frame], courts: list[Court], p: AnalyzerParams = DEFAULT_PARAMS
+    tracks: list[tracking.Track],
+    frames: list[detection.Frame],
+    courts: list[Court],
+    p: AnalyzerParams = DEFAULT_PARAMS,
+    tones: list[audio.Tone] | None = None,
 ) -> AnalysisResult:
-    """Split out so tuning can reuse tracks across trials that only change rally/touch thresholds."""
+    """Split out so tuning can reuse tracks across trials that only change rally/touch thresholds.
+    With the sound track's tones, referee whistles set the rally boundaries (see rallies.with_whistles)."""
     is_serve = actions.serve_checker(frames, courts, p) if courts else None
     segments = rallies.segment_rallies(tracks, is_serve, p)
+    if tones:
+        whistles = audio.classify(tones, p.whistle_start_db, p.whistle_end_db, p.whistle_min_seconds)
+        segments = rallies.with_whistles(segments, whistles, p)
     touches = tracking.find_touches(tracks, p)
 
     hints: list[ActionHint] = []
