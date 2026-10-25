@@ -1,0 +1,52 @@
+{
+  "created": "2026-10-25T08:40:01+00:00",
+  "params": {
+    "max_gap": 0.5,
+    "max_speed": 2.5,
+    "start_conf": 0.2,
+    "min_track_points": 4,
+    "min_track_extent": 0.05,
+    "merge_gap": 4.5,
+    "min_rally": 3.0,
+    "lead": 2.4,
+    "tail": 0.04,
+    "long_flight_extent": 0.145,
+    "long_flight_seconds": 0.4,
+    "touch_dedup": 0.474,
+    "turn_angle_deg": 47.047,
+    "min_turn_speed": 0.302,
+    "max_person_dist": 0.05,
+    "block_window": 0.66
+  },
+  "metrics": {
+    "rallies_true": 125,
+    "rallies_found": 101,
+    "rallies_false": 28,
+    "rally_precision": 0.783,
+    "rally_recall": 0.808,
+    "rally_f1": 0.795,
+    "start_error_s": 2.67,
+    "end_error_s": 4.21,
+    "action_precision": 0.436,
+    "action_recall": 0.359,
+    "action_f1": 0.394
+  },
+  "baseline": {
+    "rallies_true": 125,
+    "rallies_found": 85,
+    "rallies_false": 59,
+    "rally_precision": 0.59,
+    "rally_recall": 0.68,
+    "rally_f1": 0.632,
+    "start_error_s": 4.141,
+    "end_error_s": 3.602,
+    "action_precision": 0.361,
+    "action_recall": 0.335,
+    "action_f1": 0.348
+  },
+  "sets": [
+    "ДРУЖИНА 24.10, партия 1 · Домашний зал",
+    "ДРУЖИНА 24.10, партия 2 · Домашний зал",
+    "ДРУЖИНА 24.10, партия 3 · Домашний зал"
+  ]
+}
